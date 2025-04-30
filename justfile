@@ -40,16 +40,26 @@ clean:
     rm -rf k3s/kubeconfig/*
     @echo "Cleaned build artifacts and kubeconfig"
 
+# Build all projects
+build:
+    #!/usr/bin/env bash
+    cargo build --workspace
+
 ##########################################
 
 # Export CRD schemas
-crd-schemas:
+crd-schemas: build
     #!/usr/bin/env bash
-    cargo run -- schema pool --format json > k3s/schema-crd-pool.json
-    cargo run -- schema server --format json > k3s/schema-crd-server.json
+    ./target/debug/unmcp schema pool --format json > k3s/schema-crd-pool.json
+    ./target/debug/unmcp schema server --format json > k3s/schema-crd-server.json
 
-# Install CRDs (cargo run -- crd pool --format yaml)
-crd-install:
+crd-uninstall: build
     #!/usr/bin/env bash
-    cargo run -- crd pool --format yaml | kubectl apply -f -
-    cargo run -- crd server --format yaml | kubectl apply -f -
+    ./target/debug/unmcp crd pool --format yaml | kubectl delete -f - || true
+    ./target/debug/unmcp crd server --format yaml | kubectl delete -f - || true
+
+# Install CRDs (./target/debug/unmcp-crds crd pool --format yaml)
+crd-install: crd-uninstall
+    #!/usr/bin/env bash
+    ./target/debug/unmcp crd pool --format yaml | kubectl apply -f -
+    ./target/debug/unmcp crd server --format yaml | kubectl apply -f -
