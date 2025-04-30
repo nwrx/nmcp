@@ -1,10 +1,9 @@
-use kube::CustomResourceExt;
 use tracing::{info, warn};
-use kube::api::Api;
+use kube::{api::Api, CustomResourceExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 
-use crate::utils::{Error, Result};
-use super::{MCPServerController, MCPServer};
+use crate::{utils::{Error, Result}, MCPServer};
+use crate::server::controller::controller_impl::MCPServerController;
 
 impl MCPServerController {
     /// Asserts that the MCPServer CRD exists in the Kubernetes cluster
@@ -22,11 +21,11 @@ impl MCPServerController {
         
         // --- Get CRD API from the client.
         let client = self.context.read().await.client.clone();
-        let crds_api: Api<CustomResourceDefinition> = Api::all(client);
+        let crd_api: Api<CustomResourceDefinition> = Api::all(client);
         let crd_name = MCPServer::crd_name();
         
         // --- Check if CRD already exists.
-        match crds_api.get(crd_name).await {
+        match crd_api.get(crd_name).await {
             Ok(_) => {
                 info!("MCPServer CRD exists in the cluster");
                 Ok(())

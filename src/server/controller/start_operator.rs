@@ -1,25 +1,23 @@
-use tracing::{error, info};
+use tracing::error;
 use futures::stream::StreamExt;
-use kube::{
-    api::{Api, ResourceExt},
-    runtime::{controller::Action, Controller, watcher::Config},
-};
+use kube::api::{Api, ResourceExt};
+use kube::runtime::{controller::Action, Controller, watcher::Config};
 use std::sync::Arc;
 
 use crate::utils::Result;
-use crate::server::server_controller::MCPServerController;
-use crate::server::server_crd::MCPServer;
+use crate::MCPServer;
+use super::MCPServerController;
 
 impl MCPServerController {
     /// Start the controller
-    pub async fn start(&self) -> Result<()> {
-        info!("Starting MCPServer controller");
+    pub async fn start_operator(&self) -> Result<()> {
         
+        // --- Get the context data.
         let context = self.context.clone();
         let client = context.read().await.client.clone();
         let config = context.read().await.config.clone();
         
-        // Define the API for MCPServer resources
+        // --- Define the API for MCPServer resources
         let servers: Api<MCPServer> = match &config.namespace {
             Some(namespace) => Api::namespaced(client.clone(), namespace),
             None => Api::all(client.clone()),
@@ -34,9 +32,9 @@ impl MCPServerController {
 
                 // This closure is called when a MCPServer resource is created, updated, or deleted.
                 // It receives the server resource and the context data (which is empty in this case).
-                |server, ctx_data| {
+                |server, _| {
                     let context = context.clone();
-                    async move { Self::reconcile(server, ctx_data, context).await }
+                    async move { Self::reconcile(server, context).await }
                 },
 
                 // This closure is called when an error occurs during reconciliation.
