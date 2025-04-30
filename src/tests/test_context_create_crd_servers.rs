@@ -51,8 +51,8 @@ impl TestContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::api::Api;
+    use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 
     #[tokio::test]
     async fn test_create_crd_servers() {
