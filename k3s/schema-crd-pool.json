@@ -1,0 +1,767 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCPPool",
+  "description": "Auto-generated derived type for McpPoolSpec via `CustomResource`",
+  "type": "object",
+  "required": [
+    "spec"
+  ],
+  "properties": {
+    "spec": {
+      "$ref": "#/definitions/McpPoolSpec"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/McpPoolStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "AffinityConfig": {
+      "description": "Affinity configuration",
+      "type": "object",
+      "properties": {
+        "podAntiAffinity": {
+          "description": "Pod anti-affinity",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PodAntiAffinityConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AutoscalingConfig": {
+      "description": "Auto-scaling configuration",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether auto-scaling is enabled",
+          "default": false,
+          "type": "boolean"
+        },
+        "scaleDownCooldown": {
+          "description": "Scale down cooldown in seconds",
+          "default": 300,
+          "type": "integer",
+          "format": "int32"
+        },
+        "scaleUpCooldown": {
+          "description": "Scale up cooldown in seconds",
+          "default": 60,
+          "type": "integer",
+          "format": "int32"
+        },
+        "targetCpuUtilization": {
+          "description": "Target CPU utilization percentage",
+          "default": 70,
+          "type": "integer",
+          "format": "int32"
+        },
+        "targetMemoryUtilization": {
+          "description": "Target memory utilization percentage",
+          "default": 80,
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "Capabilities": {
+      "description": "Container capabilities",
+      "type": "object",
+      "required": [
+        "drop"
+      ],
+      "properties": {
+        "drop": {
+          "description": "Capabilities to drop",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "CleanupPolicy": {
+      "description": "Cleanup policy",
+      "type": "object",
+      "properties": {
+        "deleteOrphanedServers": {
+          "description": "Whether to delete orphaned servers",
+          "default": true,
+          "type": "boolean"
+        },
+        "terminateGracePeriod": {
+          "description": "Grace period for termination",
+          "default": 30,
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "Condition": {
+      "type": "object",
+      "required": [
+        "status",
+        "type"
+      ],
+      "properties": {
+        "lastTransitionTime": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "CorsConfig": {
+      "description": "CORS configuration",
+      "type": "object",
+      "required": [
+        "allowOrigins"
+      ],
+      "properties": {
+        "allowOrigins": {
+          "description": "Allowed origins",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "HttpGetProbe": {
+      "description": "HTTP GET probe",
+      "type": "object",
+      "required": [
+        "path",
+        "port"
+      ],
+      "properties": {
+        "path": {
+          "description": "Path to probe",
+          "type": "string"
+        },
+        "port": {
+          "description": "Port to probe",
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "LabelSelector": {
+      "description": "Label selector",
+      "type": "object",
+      "required": [
+        "matchLabels"
+      ],
+      "properties": {
+        "matchLabels": {
+          "description": "Match labels",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "McpPoolSpec": {
+      "description": "McpPool custom resource definition",
+      "type": "object",
+      "properties": {
+        "affinity": {
+          "description": "Affinity configuration",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AffinityConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "autoscaling": {
+          "description": "Auto-scaling configuration",
+          "default": {
+            "enabled": false,
+            "scaleDownCooldown": 0,
+            "scaleUpCooldown": 0,
+            "targetCpuUtilization": 0,
+            "targetMemoryUtilization": 0
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/AutoscalingConfig"
+            }
+          ]
+        },
+        "cleanupPolicy": {
+          "description": "Cleanup policy",
+          "default": {
+            "deleteOrphanedServers": false,
+            "terminateGracePeriod": 0
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/CleanupPolicy"
+            }
+          ]
+        },
+        "maxServers": {
+          "description": "Maximum servers in the pool",
+          "default": 100,
+          "type": "integer",
+          "format": "int32"
+        },
+        "minServers": {
+          "description": "Minimum servers to maintain",
+          "default": 10,
+          "type": "integer",
+          "format": "int32"
+        },
+        "nodeSelector": {
+          "description": "Node selector",
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "priorityClassName": {
+          "description": "Priority class name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scaleDownDelay": {
+          "description": "Delay before scaling down (seconds)",
+          "default": 60,
+          "type": "integer",
+          "format": "int32"
+        },
+        "serverDefaults": {
+          "description": "Server defaults",
+          "default": {
+            "image": null,
+            "livenessProbe": null,
+            "networking": null,
+            "resources": null,
+            "securityContext": null
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ServerDefaults"
+            }
+          ]
+        },
+        "serverTimeout": {
+          "description": "Server idle timeout in seconds",
+          "default": 300,
+          "type": "integer",
+          "format": "int32"
+        },
+        "tolerations": {
+          "description": "Pod tolerations",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Toleration"
+          }
+        },
+        "upgradeStrategy": {
+          "description": "Upgrade strategy",
+          "default": {
+            "maxSurge": null,
+            "maxUnavailable": null,
+            "type": ""
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpgradeStrategy"
+            }
+          ]
+        }
+      }
+    },
+    "McpPoolStatus": {
+      "description": "McpPool status",
+      "type": "object",
+      "properties": {
+        "availableServers": {
+          "description": "Available servers count",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "conditions": {
+          "description": "Status conditions",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Condition"
+          }
+        },
+        "inUseServers": {
+          "description": "In use servers count",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "lastScaleDownTime": {
+          "description": "Last scale down time",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "lastScaleUpTime": {
+          "description": "Last scale up time",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "metrics": {
+          "description": "Pool metrics",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PoolMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pendingServers": {
+          "description": "Pending servers count",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "NetworkingConfig": {
+      "description": "Network configuration",
+      "type": "object",
+      "properties": {
+        "cors": {
+          "description": "CORS configuration",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CorsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exposeExternally": {
+          "description": "Whether to expose externally, will either create a LoadBalancer or ClusterIP service depending on the value of this field. Keep in mind that exposing externally may incur costs.",
+          "default": false,
+          "type": "boolean"
+        },
+        "port": {
+          "description": "Server port",
+          "default": 8080,
+          "type": "integer",
+          "format": "int32"
+        },
+        "protocol": {
+          "description": "Protocol (HTTP or HTTPS)",
+          "default": "HTTP",
+          "type": "string"
+        }
+      }
+    },
+    "PodAffinityTerm": {
+      "description": "Pod affinity term",
+      "type": "object",
+      "required": [
+        "labelSelector",
+        "topologyKey"
+      ],
+      "properties": {
+        "labelSelector": {
+          "description": "Label selector",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LabelSelector"
+            }
+          ]
+        },
+        "topologyKey": {
+          "description": "Topology key",
+          "type": "string"
+        }
+      }
+    },
+    "PodAntiAffinityConfig": {
+      "description": "Pod anti-affinity configuration",
+      "type": "object",
+      "properties": {
+        "preferredDuringSchedulingIgnoredDuringExecution": {
+          "description": "Preferred during scheduling, ignored during execution",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/WeightedPodAffinityTerm"
+          }
+        }
+      }
+    },
+    "PoolMetrics": {
+      "description": "Pool metrics",
+      "type": "object",
+      "properties": {
+        "activeConnections": {
+          "description": "Active connections",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "averageCpuUtilization": {
+          "description": "Average CPU utilization",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "averageMemoryUtilization": {
+          "description": "Average memory utilization",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalRequests": {
+          "description": "Total requests",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        }
+      }
+    },
+    "ProbeConfig": {
+      "description": "Probe configuration",
+      "type": "object",
+      "required": [
+        "httpGet"
+      ],
+      "properties": {
+        "httpGet": {
+          "description": "HTTP get probe",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HttpGetProbe"
+            }
+          ]
+        },
+        "initialDelaySeconds": {
+          "description": "Initial delay seconds",
+          "default": 5,
+          "type": "integer",
+          "format": "int32"
+        },
+        "periodSeconds": {
+          "description": "Period seconds",
+          "default": 10,
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "ResourceQuantity": {
+      "description": "Resource quantity",
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "description": "CPU quantity",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory": {
+          "description": "Memory quantity",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Resources": {
+      "description": "Resource requirements",
+      "type": "object",
+      "properties": {
+        "limits": {
+          "description": "Resource limits",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResourceQuantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requests": {
+          "description": "Resource requests",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResourceQuantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "SeccompProfile": {
+      "description": "Seccomp profile",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "description": "Profile type",
+          "type": "string"
+        }
+      }
+    },
+    "SecurityContext": {
+      "description": "Security context",
+      "type": "object",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "description": "Allow privilege escalation",
+          "default": false,
+          "type": "boolean"
+        },
+        "capabilities": {
+          "description": "Capabilities",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Capabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runAsNonRoot": {
+          "description": "Run as non-root",
+          "default": true,
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "description": "Run as user ID",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "seccompProfile": {
+          "description": "Seccomp profile",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SeccompProfile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ServerDefaults": {
+      "description": "Server defaults",
+      "type": "object",
+      "properties": {
+        "image": {
+          "description": "Default image",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "livenessProbe": {
+          "description": "Default liveness probe",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ProbeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "networking": {
+          "description": "Default networking",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NetworkingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resources": {
+          "description": "Default resources",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Resources"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "securityContext": {
+          "description": "Default security context",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SecurityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Toleration": {
+      "description": "Pod toleration",
+      "type": "object",
+      "properties": {
+        "effect": {
+          "description": "Toleration effect",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "description": "Toleration key",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operator": {
+          "description": "Toleration operator",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "description": "Toleration value",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "UpgradeStrategy": {
+      "description": "Upgrade strategy",
+      "type": "object",
+      "properties": {
+        "maxSurge": {
+          "description": "Max surge",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxUnavailable": {
+          "description": "Max unavailable",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "Strategy type",
+          "default": "RollingUpdate",
+          "type": "string"
+        }
+      }
+    },
+    "WeightedPodAffinityTerm": {
+      "description": "Weighted pod affinity term",
+      "type": "object",
+      "required": [
+        "podAffinityTerm",
+        "weight"
+      ],
+      "properties": {
+        "podAffinityTerm": {
+          "description": "Pod affinity term",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PodAffinityTerm"
+            }
+          ]
+        },
+        "weight": {
+          "description": "Weight",
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    }
+  }
+}

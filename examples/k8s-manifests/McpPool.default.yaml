@@ -1,0 +1,11 @@
+apiVersion: unmcp.dev/v1
+kind: McpPool
+metadata:
+  name: my-mcp-pool
+  namespace: default
+spec:
+  maxServers: 100
+  minServers: 10
+  serverTimeout: 300
+  serverDefaults: 
+    image: mcp/time:lates
