@@ -1,10 +1,10 @@
 mod program_struct;
-mod program_oparator_start;
-mod program_get_client;
-mod program_run;
-mod program_schema_pool;
-mod program_schema_server;
-mod program_crd_pool;
-mod program_crd_server;
+mod operator_start;
+mod get_client;
+mod run;
+mod get_pool_schema;
+mod get_server_schema;
+mod get_pool_crd;
+mod get_server_crd;
 
 pub use program_struct::{Program, ProgramArgs};

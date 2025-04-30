@@ -4,25 +4,12 @@ use crate::{MCPPoolController, MCPPoolControllerConfig, MCPServerController, MCP
 
 impl Program {
     /// Run the UNMCP operator with the configured parameters
-    pub async fn oparator_start(&self) -> Result<()> {
-
-        // Initialize Pretty tracing
-        tracing_subscriber::fmt()
-            .with_target(false)
-            .with_level(true)
-            .with_line_number(false)
-            .with_file(false)
-            .without_time()
-            .pretty()
-            .init();
+    pub async fn operator_start(&self) -> Result<()> {
 
         info!("Starting UNMCP controller");
         
         // Get Kubernetes client using the extracted method
-        let client = self.get_client().await.map_err(|e| {
-            error!("Failed to create Kubernetes client: {}", e);
-            e
-        })?;
+        let client = self.get_client().await?;
 
         // Configure controllers
         let pool_config: MCPPoolControllerConfig = MCPPoolControllerConfig {
@@ -52,7 +39,7 @@ impl Program {
         });
         
         let server_task = tokio::spawn(async move {
-            if let Err(e) = server_controller.start().await {
+            if let Err(e) = server_controller.start_operator().await {
                 error!("Server controller error: {}", e);
             }
         });
