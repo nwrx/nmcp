@@ -1,6 +1,6 @@
-//! Error types for the controller crate.
-
+use std::io::Error as IoError;
 use kube::config::KubeconfigError;
+use kube::Error as KubeError;
 use thiserror::Error;
 
 /// Controller-specific errors
@@ -22,19 +22,26 @@ pub enum Error {
     /// Reconciliation errors
     #[error("Reconciliation error: {0}")]
     ReconciliationError(String),
-    
-    /// Finalizer errors
-    #[error("Finalizer error: {0}")]
-    FinalizerError(String),
 
-    ////////////////////////////////////////////////////////////////////
+    ///////////////////////////////
+    /// Finalizer-related errors
+    ///////////////////////////////
+
+    #[error("Failed to add finalizer '{finalizer}' to resource '{name}': {message}")]
+    FinalizerError {
+        name: String,
+        finalizer: String,
+        message: String,
+    },
+
+    ///////////////////////////////
     /// Kubeconfig-related errors
-    ////////////////////////////////////////////////////////////////////
+    ///////////////////////////////
 
     #[error("Failed to read kubeconfig file at path '{path}': {error}")]
     KubeconfigReadError {
         path: String,
-        error: std::io::Error,
+        error: IoError,
     },
 
     #[error("Failed to parse kubeconfig file at '{path}': {error}")]
@@ -46,18 +53,18 @@ pub enum Error {
     #[error("Failed to create Kubernetes client configuration from kubeconfig at '{path}': {error}")]
     KubeconfigConfigError {
         path: String,
-        error: kube::config::KubeconfigError,
+        error: KubeconfigError,
     },
 
     #[error("Failed to create Kubernetes client from configuration: {error}")]
     KubeClientCreationError {
         path: String,
-        error: kube::Error,
+        error: KubeError,
     },
 
     #[error("Failed to create Kubernetes client using default kubeconfig: {error}")]
     KubeconfigError {
-        error: kube::Error,
+        error: KubeError,
     },
 }
 
