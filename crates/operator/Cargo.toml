@@ -1,0 +1,42 @@
+[package]
+name = "unmcp-operator"
+version.workspace = true
+edition.workspace = true
+description = "Kubernetes operator for managed MCP servers"
+license.workspace = true
+
+[dependencies]
+kube.workspace = true
+k8s-openapi.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+futures.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+axum.workspace = true
+schemars.workspace = true
+rand.workspace = true
+tokio-stream.workspace = true
+reqwest.workspace = true
+prometheus = "0.13.3"
+prometheus-metric-storage = "0.5.0"
+lazy_static = "1.4.0"
+clap = { version = "4.4.11", features = ["derive"] }
+structopt = "0.3.26"
+tower-http = { version = "0.4.4", features = ["trace"] }
+kube-client = "0.99.0"
+
+[[bin]]
+name = "unmcp-operator"
+path = "main.rs"
+
+[lib]
+name = "unmcp_operator"
+path = "lib.rs"
