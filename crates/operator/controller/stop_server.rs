@@ -18,11 +18,11 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// controller.server_down(&server).await?;
+    /// controller.stop_server(&server).await?;
     /// ```
-    pub async fn server_down(&self, server: &MCPServer) -> Result<()> {
-        self.server_stop_pod(server).await?;
-        self.server_stop_service(server).await?;
+    pub async fn stop_server(&self, server: &MCPServer) -> Result<()> {
+        self.stop_server_pod(server).await?;
+        self.stop_server_service(server).await?;
         Ok(())
     }
 }

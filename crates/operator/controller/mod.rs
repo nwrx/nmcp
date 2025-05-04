@@ -5,22 +5,23 @@ use structopt::StructOpt;
 use tokio::sync::RwLock;
 use tracing::info;
 
+mod create_server_pod_patch;
+mod create_server_service_patch;
+mod get_server_pod;
+mod get_server_pool;
 mod get_server_service;
+mod is_server_up;
+mod list_pools;
 mod list_servers;
-mod server_create_pod_patch;
-mod server_create_service_patch;
-mod server_down;
-mod server_get_pod;
-mod server_get_pool;
-mod server_is_up;
-mod server_reconciler;
-mod server_should_be_up;
-mod server_start_operator;
-mod server_start_pod;
-mod server_start_service;
-mod server_stop_pod;
-mod server_stop_service;
-mod server_up;
+mod reconcile_server;
+mod should_server_be_up;
+mod start_server;
+mod start_server_operator;
+mod start_server_pod;
+mod start_server_service;
+mod stop_server;
+mod stop_server_pod;
+mod stop_server_service;
 
 /// Configuration for the Kubernetes operator
 #[derive(Debug, Clone, StructOpt)]

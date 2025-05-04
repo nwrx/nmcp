@@ -21,9 +21,9 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// let pod = controller.server_get_pod(&server).await?;
+    /// let pod = controller.get_server_pod(&server).await?;
     /// ```
-    pub async fn server_get_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
+    pub async fn get_server_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
         let client = self.get_client().await;
         Api::<v1::Pod>::namespaced(client, &self.namespace)
             .get(&server.name_pod())

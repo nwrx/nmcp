@@ -23,8 +23,8 @@ impl Controller {
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
     /// let should_be_up = controller.server_should_be_up(&server).await?;
     /// ```
-    pub async fn server_should_be_up(&self, server: &MCPServer) -> Result<bool> {
-        let pool = self.server_get_pool(server).await?;
+    pub async fn should_server_be_up(&self, server: &MCPServer) -> Result<bool> {
+        let pool = self.get_server_pool(server).await?;
 
         // Check pool limits
         if let Some(pool_status) = &pool.status {

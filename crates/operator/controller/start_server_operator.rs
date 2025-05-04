@@ -20,7 +20,7 @@ impl Controller {
     /// * `Error::ServerPodTemplateError` - If there is an error creating the Pod.
     /// * `Error::ServerServiceTemplateError` - If there is an error creating the Service.
     /// * `Error::ServerReconcileError` - If there is an error during reconciliation.
-    pub async fn start_operator(&self) -> Result<()> {
+    pub async fn start_server_operator(&self) -> Result<()> {
         let client = self.get_client().await;
         let ns = self.namespace.clone();
         let wc = Config::default();
@@ -35,7 +35,7 @@ impl Controller {
             .owns(api_pod, wc.clone())
             .owns(api_services, wc.clone())
             .run(
-                |server, controller| async move { controller.server_reconciler(&server).await },
+                |server, controller| async move { controller.reconcile_server(&server).await },
                 |_, _, _context| Action::requeue(Duration::from_secs(5)),
                 Arc::new(self.clone()),
             )

@@ -22,11 +22,11 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// let service = controller.server_start_service(&server).await?;
+    /// let service = controller.start_server_service(&server).await?;
     /// ```
-    pub async fn server_start_service(&self, server: &MCPServer) -> Result<v1::Service> {
+    pub async fn start_server_service(&self, server: &MCPServer) -> Result<v1::Service> {
         let service = v1::Service::default();
-        let patch = self.server_create_service_patch(server, service).await;
+        let patch = self.create_server_service_patch(server, service).await;
         let pp = PatchParams::apply("mcp-server");
         Api::namespaced(self.get_client().await, &self.namespace)
             .patch(&server.name_service(), &pp, &patch)

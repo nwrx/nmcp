@@ -28,7 +28,7 @@ impl Controller {
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
     /// let action = controller.server_reconciler(&server).await?;
     /// ```
-    pub async fn server_reconciler(&self, server: &MCPServer) -> Result<Action> {
+    pub async fn reconcile_server(&self, server: &MCPServer) -> Result<Action> {
         let client = self.get_client().await;
         let api = Api::<MCPServer>::namespaced(client.clone(), &self.namespace);
         let obj = Arc::new(server.clone());
@@ -42,14 +42,14 @@ impl Controller {
                 move |event| async move {
                     match event {
                         Event::Cleanup { .. } => {
-                            controller.server_down(&server).await?;
+                            controller.stop_server(&server).await?;
                             Ok(Action::await_change())
                         }
                         Event::Apply { .. } => {
-                            if controller.server_should_be_up(&server).await? {
-                                controller.server_up(&server).await?;
+                            if controller.should_server_be_up(&server).await? {
+                                controller.start_server(&server).await?;
                             } else {
-                                controller.server_down(&server).await?;
+                                controller.stop_server(&server).await?;
                             }
                             Ok(Action::requeue(Duration::from_secs(60)))
                         }

@@ -19,9 +19,9 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// let pool = controller.server_get_pool(&server).await?;
+    /// let pool = controller.get_server_pool(&server).await?;
     /// ```
-    pub async fn server_get_pool(&self, server: &MCPServer) -> Result<MCPPool> {
+    pub async fn get_server_pool(&self, server: &MCPServer) -> Result<MCPPool> {
         let client = self.get_client().await;
         Api::namespaced(client, &self.namespace)
             .get(&server.spec.pool)

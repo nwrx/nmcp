@@ -22,11 +22,11 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// let pod = controller.server_start_pod(&server).await?;
+    /// let pod = controller.start_server_pod(&server).await?;
     /// ```
-    pub async fn server_start_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
+    pub async fn start_server_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
         let pod = v1::Pod::default();
-        let patch = self.server_create_pod_patch(server, pod).await;
+        let patch = self.create_server_pod_patch(server, pod).await;
         let pp = PatchParams::apply("mcp-server");
         let client = self.get_client().await;
         Api::namespaced(client, &self.namespace)

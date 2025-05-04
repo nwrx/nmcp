@@ -21,9 +21,9 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// controller.server_stop_service(&server).await?;
+    /// controller.stop_server_service(&server).await?;
     /// ```
-    pub async fn server_stop_service(&self, server: &MCPServer) -> Result<()> {
+    pub async fn stop_server_service(&self, server: &MCPServer) -> Result<()> {
         let client = self.get_client().await;
         let api: Api<v1::Service> = Api::namespaced(client, &self.namespace);
         match api

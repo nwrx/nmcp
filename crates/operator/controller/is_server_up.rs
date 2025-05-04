@@ -18,10 +18,10 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// let is_running = controller.server_is_up(&server).await?;
+    /// let is_running = controller.is_server_up(&server).await?;
     /// ```
-    pub async fn server_is_up(&self, server: &MCPServer) -> Result<bool> {
-        let pod = self.server_get_pod(server).await?;
+    pub async fn is_server_up(&self, server: &MCPServer) -> Result<bool> {
+        let pod = self.get_server_pod(server).await?;
         let status = pod.status.clone().unwrap_or_default();
         if let Some(phase) = status.phase {
             if phase == "Running" {

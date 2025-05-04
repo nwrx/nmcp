@@ -26,7 +26,7 @@ impl Controller {
     /// let service = v1::Service::default();
     /// let patch = controller.server_create_service_patch(&server, service).await?;
     /// ```
-    pub async fn server_create_service_patch(
+    pub async fn create_server_service_patch(
         &self,
         server: &MCPServer,
         mut service: v1::Service,

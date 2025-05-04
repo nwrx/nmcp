@@ -21,9 +21,9 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// controller.server_stop_pod(&server).await?;
+    /// controller.stop_server_pod(&server).await?;
     /// ```
-    pub async fn server_stop_pod(&self, server: &MCPServer) -> Result<()> {
+    pub async fn stop_server_pod(&self, server: &MCPServer) -> Result<()> {
         let client = self.get_client().await;
         let api: Api<v1::Pod> = Api::namespaced(client, &self.namespace);
         match api.delete(&server.name_pod(), &Default::default()).await {

@@ -18,11 +18,11 @@ impl Controller {
     /// # Example
     /// ```
     /// let controller = Controller::new("default".to_string(), kube_client).await?;
-    /// controller.server_up(&server).await?;
+    /// controller.start_server(&server).await?;
     /// ```
-    pub async fn server_up(&self, server: &MCPServer) -> Result<()> {
-        self.server_start_pod(server).await?;
-        self.server_start_service(server).await?;
+    pub async fn start_server(&self, server: &MCPServer) -> Result<()> {
+        self.start_server_pod(server).await?;
+        self.start_server_service(server).await?;
         Ok(())
     }
 }

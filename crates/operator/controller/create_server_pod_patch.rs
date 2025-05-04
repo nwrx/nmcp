@@ -17,7 +17,7 @@ impl Controller {
     ///
     /// # Errors
     /// * Returns an error if there is an issue preparing the patch.
-    pub async fn server_create_pod_patch(
+    pub async fn create_server_pod_patch(
         &self,
         server: &MCPServer,
         mut pod: v1::Pod,
