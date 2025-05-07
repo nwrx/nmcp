@@ -1,10 +1,9 @@
 use super::ServerState;
-use crate::MCPServerSpec;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// Query parameters for server list endpoint
@@ -13,38 +12,27 @@ pub struct ServerListQuery {
     pool: Option<String>,
 }
 
-/// Server list response
-#[derive(Serialize)]
-struct ServerListResponse {
-    items: Vec<MCPServerSpec>,
-}
-
 /// Handler for GET /api/v1/servers
 pub async fn server_list(
     State(state): State<Arc<ServerState>>,
     Query(query): Query<ServerListQuery>,
 ) -> Response {
-    let servers = state.controller().list_servers().await;
-    let response = match servers {
+    match state.controller().list_servers().await {
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch servers").into_response(),
         Ok(servers) => {
-            let filtered_servers = if let Some(pool_name) = query.pool {
+            let response = if let Some(pool_name) = query.pool {
                 servers
                     .into_iter()
                     .filter(|s| s.spec.pool == pool_name)
-                    .map(|s| s.spec)
-                    .collect()
+                    .map(|s| s.into_response())
+                    .collect::<Vec<_>>()
             } else {
-                servers.into_iter().map(|s| s.spec).collect()
+                servers
+                    .into_iter()
+                    .map(|s| s.into_response())
+                    .collect::<Vec<_>>()
             };
-
-            ServerListResponse {
-                items: filtered_servers,
-            }
+            (StatusCode::OK, Json(response)).into_response()
         }
-        Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch servers").into_response();
-        }
-    };
-
-    (StatusCode::OK, Json(response.items)).into_response()
+    }
 }

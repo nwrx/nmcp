@@ -32,6 +32,7 @@ clap = { version = "4.4.11", features = ["derive"] }
 structopt = "0.3.26"
 tower-http = { version = "0.4.4", features = ["trace"] }
 kube-client = "0.99.0"
+rmcp.workspace = true
 
 [[bin]]
 name = "unmcp-operator"

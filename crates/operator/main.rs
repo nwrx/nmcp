@@ -30,12 +30,14 @@ async fn main() -> Result<()> {
         // Start the operator.
         Command::Operator(options) => {
             let controller = Controller::new(&options).await?;
+            controller.start_tracing();
             controller.start_server_operator().await?;
         }
 
         // Start the API server.
         Command::Server { global, options } => {
             let controller = Controller::new(&global).await?;
+            controller.start_tracing();
             let server = Server::new(options, controller).await?;
             let _ = server.start().await;
         }

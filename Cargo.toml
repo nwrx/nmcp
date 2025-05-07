@@ -35,5 +35,6 @@ pretty_assertions = { version = "1.4.1", default-features = false, features = ["
 axum = "0.8.3"
 tokio-stream = "0.1.17"
 reqwest = "0.12.15"
+rmcp = { version = "0.1.5", features = ["client", "server"] }
 unmcp-resources = { path = "crates/resources" }
 unmcp-test-utils = { path = "crates/test-utils" }

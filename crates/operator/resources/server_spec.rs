@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// MCPServer custom resource definition
-#[derive(CustomResource, Clone, Debug, Deserialize, Serialize, JsonSchema, Default)]
+#[derive(CustomResource, Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[kube(
     group = "unmcp.dev",
     version = "v1",
@@ -57,7 +57,21 @@ pub struct MCPServerSpec {
     /// any requests before it's terminated. This helps to conserve resources by
     /// shutting down idle servers.
     #[serde(default = "default_idle_timeout")]
-    pub idle_timeout: i32,
+    pub idle_timeout: u32,
+}
+
+impl Default for MCPServerSpec {
+    fn default() -> Self {
+        Self {
+            pool: default_pool(),
+            image: default_image(),
+            command: default_command(),
+            args: None,
+            env: default_env(),
+            transport: MCPServerTransport::default(),
+            idle_timeout: default_idle_timeout(),
+        }
+    }
 }
 
 /// Default pool name
@@ -81,6 +95,131 @@ fn default_command() -> Option<Vec<String>> {
 }
 
 /// Default idle timeout in seconds
-fn default_idle_timeout() -> i32 {
+fn default_idle_timeout() -> u32 {
     60 // 1 minutes
+}
+
+impl Default for MCPServer {
+    fn default() -> Self {
+        Self {
+            metadata: kube::core::ObjectMeta::default(),
+            spec: MCPServerSpec::default(),
+            status: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kube::CustomResourceExt;
+
+    #[test]
+    fn test_mcp_server_crd() {
+        let crd = MCPServer::crd();
+        assert_eq!(crd.spec.names.kind, "MCPServer");
+        assert_eq!(crd.spec.names.plural, "mcpservers");
+        assert_eq!(crd.spec.names.singular, Some("mcpserver".to_string()));
+        assert_eq!(crd.spec.group, "unmcp.dev");
+        assert_eq!(crd.spec.versions[0].name, "v1");
+    }
+
+    #[test]
+    fn test_mcp_server_spec_defaults() {
+        let spec = MCPServerSpec::default();
+        assert_eq!(spec.pool, "default");
+        assert_eq!(spec.image, "mcp/fetch:latest");
+        assert_eq!(spec.command, None);
+        assert_eq!(spec.args, None);
+        assert_eq!(spec.env.len(), 0);
+        assert_eq!(spec.transport, MCPServerTransport::Stdio);
+        assert_eq!(spec.idle_timeout, 60);
+    }
+
+    #[test]
+    fn test_mcp_server_json_deserialization() {
+        let json = r#"
+        {
+            "apiVersion": "unmcp.dev/v1",
+            "kind": "MCPServer",
+            "metadata": {
+                "name": "test-server",
+                "namespace": "default"
+            },
+            "spec": {
+                "pool": "test-pool",
+                "image": "mcp/fetch:latest",
+                "command": ["mcp", "--config", "/etc/mcp/config.yaml"],
+                "args": ["--verbose"],
+                "env": [
+                    {"name": "ENV_VAR", "value": "value"}
+                ],
+                "transport": {"type": "sse", "port": 8080},
+                "idleTimeout": 120
+            }
+        }
+        "#;
+
+        let server: MCPServer = serde_json::from_str(json).unwrap();
+        assert_eq!(server.spec.pool, "test-pool");
+        assert_eq!(server.spec.image, "mcp/fetch:latest");
+        assert_eq!(
+            server.spec.command,
+            Some(vec![
+                "mcp".to_string(),
+                "--config".to_string(),
+                "/etc/mcp/config.yaml".to_string()
+            ])
+        );
+        assert_eq!(server.spec.args, Some(vec!["--verbose".to_string()]));
+        assert_eq!(server.spec.env[0].name, "ENV_VAR");
+        assert_eq!(server.spec.env[0].value, Some("value".to_string()));
+        assert_eq!(
+            server.spec.transport,
+            MCPServerTransport::Sse { port: 8080 }
+        );
+        assert_eq!(server.spec.idle_timeout, 120);
+        assert_eq!(server.metadata.name, Some("test-server".to_string()));
+        assert_eq!(server.metadata.namespace, Some("default".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_server_json_serialization() {
+        let server = MCPServer {
+            metadata: kube::core::ObjectMeta {
+                name: Some("test-server".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: MCPServerSpec {
+                pool: "test-pool".to_string(),
+                image: "mcp/fetch:latest".to_string(),
+                command: Some(vec![
+                    "mcp".to_string(),
+                    "--config".to_string(),
+                    "/etc/mcp/config.yaml".to_string(),
+                ]),
+                args: Some(vec!["--verbose".to_string()]),
+                env: vec![v1::EnvVar {
+                    name: "ENV_VAR".to_string(),
+                    value: Some("value".to_string()),
+                    ..Default::default()
+                }],
+                transport: MCPServerTransport::Sse { port: 8080 },
+                idle_timeout: 120,
+            },
+            status: None,
+        };
+
+        let json = serde_json::to_string(&server).unwrap();
+        assert!(json.contains("\"name\":\"test-server\""));
+        assert!(json.contains("\"namespace\":\"default\""));
+        assert!(json.contains("\"pool\":\"test-pool\""));
+        assert!(json.contains("\"image\":\"mcp/fetch:latest\""));
+        assert!(json.contains("\"command\":[\"mcp\",\"--config\",\"/etc/mcp/config.yaml\"]"));
+        assert!(json.contains("\"args\":[\"--verbose\"]"));
+        assert!(json.contains("\"env\":[{\"name\":\"ENV_VAR\",\"value\":\"value\"}]"));
+        assert!(json.contains("\"transport\":{\"type\":\"sse\",\"port\":8080}"));
+        assert!(json.contains("\"idleTimeout\":120"));
+    }
 }

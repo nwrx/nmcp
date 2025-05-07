@@ -13,7 +13,7 @@ pub enum Error {
     #[error("Failed to create config from kubeconfig: {0}")]
     KubeconfigError(#[from] kube::config::KubeconfigError),
 
-    #[error("Kubernetes client error: {0}")]
+    #[error("[KubeError]: {0} ({0:?})")]
     KubeError(#[from] kube::Error),
 
     ///////////////////////////////////////////////////////////
@@ -45,30 +45,60 @@ pub enum Error {
     #[error("Could not find MCPServer resource with name: {0}")]
     PoolServerNotFoundError(String),
 
+    #[error("Failed to create MCPPool resource: {0}")]
+    PoolCreateError(#[source] kube::Error),
+
+    #[error("Failed to update MCPPool resource: {0}")]
+    PoolUpdateError(#[source] kube::Error),
+
+    #[error("Failed to delete MCPPool resource: {0}")]
+    PoolDeleteError(#[source] kube::Error),
+
+    #[error("Failed to get MCPPool resource: {0:?}")]
+    PoolGetError(#[source] kube::Error),
+
     ///////////////////////////////////////////////////////////
     /// MCPServer errors
     ///////////////////////////////////////////////////////////
 
     #[error("Failed to get the Pod assigned to the MCPServer")]
-    ServerPodNotFoundError(#[source] kube::Error),
+    ServerPodNotFound(#[source] kube::Error),
 
-    #[error("Failed to apply the Pod template assigned to the MCPServer")]
-    ServerPodTemplateError(#[source] kube::Error),
+    #[error("{0}")]
+    ServerPodTemplate(#[source] kube::Error),
 
     #[error("Failed to delete the Pod assigned to the MCPServer")]
-    ServerPodDeleteError(#[source] kube::Error),
+    ServerPodDelete(#[source] kube::Error),
 
     #[error("Failed to get the Service assigned to the MCPServer")]
-    ServerServiceNotFoundError(#[source] kube::Error),
+    ServerServiceNotFound(#[source] kube::Error),
 
-    #[error("Failed to apply the Service template assigned to the MCPServer")]
-    ServerServiceTemplateError(#[source] kube::Error),
+    #[error("{0}")]
+    ServerServiceTemplate(#[source] kube::Error),
 
     #[error("Failed to delete the Service assigned to the MCPServer")]
-    ServerServiceDeleteError(#[source] kube::Error),
+    ServerServiceDelete(#[source] kube::Error),
 
     #[error("Failed to get the pool assigned to the MCPServer")]
-    ServerPoolNotFoundError(#[source] kube::Error),
+    ServerPoolNotFound(#[source] kube::Error),
+
+    #[error("Failed to create MCPServer resource: {0}")]
+    ServerCreateFailed(#[source] kube::Error),
+
+    #[error("Failed to update MCPServer resource: {0}")]
+    ServerUpdateFailed(#[source] kube::Error),
+
+    #[error("Failed to delete MCPServer resource: {0}")]
+    ServerDeleteFailed(#[source] kube::Error),
+
+    #[error("Failed to get MCPServer resource: {0}")]
+    ServerGetFailed(#[source] kube::Error),
+
+    #[error("MCPServer with UID {0} not found")]
+    ServerNotFound(String),
+
+    #[error("Failed to attach to the Pod TTY stream: {0}")]
+    ServerStreamError(#[source] kube::Error),
 
     ///////////////////////////////////////////////////////////
     /// Axum errors

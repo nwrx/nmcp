@@ -6,16 +6,19 @@ use axum::Json;
 use serde_json::json;
 use std::sync::Arc;
 
-/// Handler for DELETE /api/v1/servers/{uid}
+/// Handler for DELETE /api/v1/servers/{name}
 pub async fn server_delete(
-    Path(uid): Path<String>,
-    State(_state): State<Arc<ServerState>>,
+    Path(name): Path<String>,
+    State(state): State<Arc<ServerState>>,
 ) -> Response {
-    // In a real implementation, we would delete the server from K8s
-    // For now, just return a success response
-    (
-        StatusCode::OK,
-        Json(json!({ "message": format!("Server {} deleted", uid) })),
-    )
-        .into_response()
+    match state.controller().delete_server(&name).await {
+        Ok(_) => {
+            tracing::info!("Server deleted successfully: {}", name);
+            (StatusCode::NO_CONTENT, Json(json!({}))).into_response()
+        }
+        Err(error) => {
+            tracing::error!("Failed to delete server: {}", error);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error.to_string())).into_response()
+        }
+    }
 }

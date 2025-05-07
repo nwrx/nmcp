@@ -3,19 +3,21 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde_json::json;
 use std::sync::Arc;
 
 /// Handler for DELETE /api/v1/pools/{name}
 pub async fn pool_delete(
     Path(name): Path<String>,
-    State(_state): State<Arc<ServerState>>,
+    State(state): State<Arc<ServerState>>,
 ) -> Response {
-    // In a real implementation, we would delete the pool from K8s
-    // For now, just return a success response
-    (
-        StatusCode::OK,
-        Json(json!({ "message": format!("Pool {} deleted", name) })),
-    )
-        .into_response()
+    match state.controller().delete_pool(&name).await {
+        Ok(_) => {
+            tracing::info!("Pool deleted successfully: {}", name);
+            (StatusCode::NO_CONTENT, Json(())).into_response()
+        }
+        Err(error) => {
+            tracing::error!("Failed to delete pool: {}", error);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error.to_string())).into_response()
+        }
+    }
 }

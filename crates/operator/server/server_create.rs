@@ -1,30 +1,38 @@
-use crate::{MCPServer, MCPServerSpec};
+use super::ServerState;
+use crate::MCPServerSpec;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use kube::api::ObjectMeta;
+use serde::Deserialize;
 use std::sync::Arc;
 
-use super::ServerState;
+/// Request body for creating a new pool
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateServerRequest {
+    /// Name of the pool to be created. This is a required field
+    /// and should be unique within the namespace.
+    pub name: String,
+
+    // Include all fields from MCPServerSpec directly
+    #[serde(flatten)]
+    pub spec: MCPServerSpec,
+}
 
 /// Handler for POST /api/v1/servers
 pub async fn server_create(
-    State(_state): State<Arc<ServerState>>,
-    Json(spec): Json<MCPServerSpec>,
+    State(state): State<Arc<ServerState>>,
+    Json(body): Json<CreateServerRequest>,
 ) -> Response {
-    // In a real implementation, we would create the server in K8s
-    // For now, just return a server we would have created
-    let server = MCPServer {
-        metadata: ObjectMeta {
-            name: Some(format!("new-server-{}", uuid::Uuid::new_v4())),
-            namespace: Some("default".to_string()),
-            uid: Some(uuid::Uuid::new_v4().to_string()),
-            ..Default::default()
-        },
-        spec,
-        status: None,
-    };
-
-    (StatusCode::CREATED, Json(server)).into_response()
+    match state
+        .controller()
+        .create_server(&body.name, body.spec)
+        .await
+    {
+        Ok(created_server) => (StatusCode::CREATED, Json(created_server)).into_response(),
+        Err(error) => {
+            tracing::error!("Failed to create server: {}", error);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error.to_string())).into_response()
+        }
+    }
 }

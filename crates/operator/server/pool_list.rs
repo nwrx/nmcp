@@ -11,7 +11,7 @@ pub async fn pool_list(State(state): State<Arc<ServerState>>) -> Response {
         Ok(pools) => {
             let pools = pools
                 .into_iter()
-                .map(|pool| pool.metadata.name)
+                .map(|pool| pool.into_response(None))
                 .collect::<Vec<_>>();
             (StatusCode::OK, Json(pools)).into_response()
         }

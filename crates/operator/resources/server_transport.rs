@@ -3,61 +3,193 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 
 /// MCPServer transport configuration
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub struct MCPServerTransport {
-    /// The transport type to use for the server. This will be used to determine how the
-    /// server communicates with other components in the system, such as the database or
-    /// other servers. Can either be "sse" (HTTP) or "stdio" (STDIN/STDOUT).
-    /// This field is required.
-    #[serde(rename = "type")]
-    pub type_: MCPServerTransportType,
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase", tag = "type")]
+pub enum MCPServerTransport {
+    /// Standard Input/Output (STDIO). This transport type is used for
+    /// communication over standard input and output.
+    #[serde(rename = "stdio")]
+    #[default]
+    Stdio,
 
-    /// Port to use for the transport. This will be used to determine which port the server
-    /// listens on for incoming connections. This field is required for the "sse" transport
-    /// type, and ignored for the "stdio" transport type.
-    #[serde(default)]
-    pub port: Option<i32>,
+    /// Server-Sent Events (HTTP). This transport type is used for
+    /// communication over HTTP.
+    #[serde(rename = "sse")]
+    Sse { port: u16 },
 }
 
 impl MCPServerTransport {
-    /// Check if the transport type is "sse"
-    pub fn is_sse(&self) -> bool {
-        matches!(self.type_, MCPServerTransportType::Sse)
+    /// Get the type of transport as a string
+    pub fn transport_type(&self) -> String {
+        match self {
+            MCPServerTransport::Sse { .. } => "sse".to_string(),
+            MCPServerTransport::Stdio => "stdio".to_string(),
+        }
     }
 
-    /// Check if the transport type is "stdio"
-    pub fn is_stdio(&self) -> bool {
-        matches!(self.type_, MCPServerTransportType::Stdio)
-    }
-}
-
-impl Default for MCPServerTransport {
-    fn default() -> Self {
-        MCPServerTransport {
-            type_: MCPServerTransportType::Stdio,
-            port: None,
+    /// Get the port for SSE transport, if applicable
+    pub fn port(&self) -> Option<u16> {
+        match self {
+            MCPServerTransport::Sse { port } => Some(*port),
+            MCPServerTransport::Stdio => None,
         }
     }
 }
 
 impl Display for MCPServerTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.type_ {
-            MCPServerTransportType::Sse => write!(f, "sse-{}", self.port.unwrap_or(0)),
-            MCPServerTransportType::Stdio => write!(f, "stdio"),
+        match self {
+            MCPServerTransport::Sse { port } => write!(f, "sse-{port}"),
+            MCPServerTransport::Stdio => write!(f, "stdio"),
         }
     }
 }
 
-/// MCPServer transport type
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum MCPServerTransportType {
-    /// Server-Sent Events (HTTP). This transport type is used for
-    /// communication over HTTP.
-    Sse,
+// Implement JsonSchema separately to avoid conflicts
+impl JsonSchema for MCPServerTransport {
+    fn schema_name() -> String {
+        "MCPServerTransport".to_string()
+    }
 
-    /// Standard Input/Output (STDIO). This transport type is used for
-    /// communication over standard input and output.
-    Stdio,
+    fn json_schema(_gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        // Create a single schema with all possible properties
+        let schema = schemars::schema::SchemaObject {
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                title: Some("Transport Configuration".to_string()),
+                description: Some("Configures how the server communicates".to_string()),
+                ..Default::default()
+            })),
+            instance_type: Some(schemars::schema::InstanceType::Object.into()),
+            object: Some(Box::new(schemars::schema::ObjectValidation {
+                required: ["type"].iter().map(|&s| s.to_string()).collect(),
+                properties: {
+                    let mut props = schemars::Map::new();
+
+                    // Define type property only once with all possible values
+                    let type_schema = schemars::schema::SchemaObject {
+                        metadata: Some(Box::new(schemars::schema::Metadata {
+                            description: Some("Transport type".to_string()),
+                            ..Default::default()
+                        })),
+                        instance_type: Some(schemars::schema::InstanceType::String.into()),
+                        enum_values: Some(vec![
+                            serde_json::Value::String("stdio".to_string()),
+                            serde_json::Value::String("sse".to_string()),
+                        ]),
+                        ..Default::default()
+                    };
+                    props.insert(
+                        "type".to_string(),
+                        schemars::schema::Schema::Object(type_schema),
+                    );
+
+                    // Define port as an optional property
+                    let port_schema = schemars::schema::SchemaObject {
+                        metadata: Some(Box::new(schemars::schema::Metadata {
+                            description: Some("Port for SSE transport".to_string()),
+                            ..Default::default()
+                        })),
+                        instance_type: Some(schemars::schema::InstanceType::Integer.into()),
+                        ..Default::default()
+                    };
+                    props.insert(
+                        "port".to_string(),
+                        schemars::schema::Schema::Object(port_schema),
+                    );
+
+                    props
+                },
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+
+        schemars::schema::Schema::Object(schema)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that the default transport type is set to `Stdio`.
+    #[test]
+    fn test_transport_defaults() {
+        let transport = MCPServerTransport::default();
+        assert!(matches!(transport, MCPServerTransport::Stdio));
+    }
+
+    /// Tests the string representation of transport types.
+    #[test]
+    fn test_transport_display() {
+        assert_eq!(
+            MCPServerTransport::Sse { port: 1234 }.to_string(),
+            "sse-1234"
+        );
+        assert_eq!(MCPServerTransport::Stdio.to_string(), "stdio");
+    }
+
+    /// Tests the transport type string representation.
+    #[test]
+    fn test_transport_type() {
+        assert_eq!(
+            MCPServerTransport::Sse { port: 1234 }.transport_type(),
+            "sse"
+        );
+        assert_eq!(MCPServerTransport::Stdio.transport_type(), "stdio");
+    }
+
+    /// Tests the port retrieval for transport types.
+    #[test]
+    fn test_transport_port() {
+        assert_eq!(MCPServerTransport::Sse { port: 1234 }.port(), Some(1234));
+        assert_eq!(MCPServerTransport::Stdio.port(), None);
+    }
+
+    /// Tests SSE transport configuration and behavior.
+    #[test]
+    fn test_transport_sse() {
+        let transport = MCPServerTransport::Sse { port: 1234 };
+        assert_eq!(transport.to_string(), "sse-1234");
+        assert_eq!(transport.port(), Some(1234));
+    }
+
+    /// Tests stdio transport configuration and behavior.
+    #[test]
+    fn test_transport_stdio() {
+        let transport = MCPServerTransport::Stdio;
+        assert_eq!(transport.to_string(), "stdio");
+        assert_eq!(transport.port(), None);
+    }
+
+    /// Tests deserialization of transport types from JSON.
+    #[test]
+    fn test_transport_deserialization() {
+        let sse_json = r#"{"type": "sse", "port": 1234}"#;
+        let sse: MCPServerTransport = serde_json::from_str(sse_json).unwrap();
+        assert_eq!(sse, MCPServerTransport::Sse { port: 1234 });
+        let stdio_json = r#"{"type": "stdio"}"#;
+        let stdio: MCPServerTransport = serde_json::from_str(stdio_json).unwrap();
+        assert_eq!(stdio, MCPServerTransport::Stdio);
+    }
+
+    /// Tests serialization of transport types to JSON.
+    #[test]
+    fn test_transport_serialization() {
+        let sse = MCPServerTransport::Sse { port: 1234 };
+        let sse_json = serde_json::to_string(&sse).unwrap();
+        assert_eq!(sse_json, r#"{"type":"sse","port":1234}"#);
+
+        let stdio = MCPServerTransport::Stdio;
+        let stdio_json = serde_json::to_string(&stdio).unwrap();
+        assert_eq!(stdio_json, r#"{"type":"stdio"}"#);
+    }
+
+    /// Tests the JSON schema generation for transport types.
+    #[test]
+    fn test_transport_json_schema() {
+        let schema = schemars::schema_for!(MCPServerTransport);
+        let json_schema = serde_json::to_string_pretty(&schema);
+        assert!(json_schema.is_ok());
+    }
 }
