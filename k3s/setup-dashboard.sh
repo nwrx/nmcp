@@ -27,64 +27,6 @@ echo "=== Cluster Information ==="
 kubectl --kubeconfig="$KUBECONFIG" get nodes
 echo ""
 
-# Deploy the Kubernetes Dashboard
-echo "=== Deploying Kubernetes Dashboard ==="
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
-
-# Create dashboard admin user and role binding
-echo "=== Creating dashboard admin user ==="
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: admin-user
-  namespace: kubernetes-dashboard
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: admin-user
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-- kind: ServiceAccount
-  name: admin-user
-  namespace: kubernetes-dashboard
-EOF
-
-# Wait for dashboard to be ready
-echo "=== Waiting for dashboard to be ready ==="
-# Add a short delay to give time for pods to be created
-sleep 10
-
-# Check if dashboard pods exist and get the proper selector
-echo "Checking for dashboard pods..."
-if kubectl get pods -n kubernetes-dashboard -o name | grep -q "pod/kubernetes-dashboard"; then
-  # Wait for dashboard pod to be ready
-  echo "Found dashboard pod, waiting for it to be ready..."
-  kubectl wait \
-    --namespace kubernetes-dashboard \
-    --for=condition=ready pod \
-    --selector=k8s-app=kubernetes-dashboard \
-    --timeout=180s || echo "Warning: Timed out waiting for dashboard pod, but will continue"
-else
-  echo "Dashboard pod not found with expected selector. Listing available pods:"
-  kubectl get pods -n kubernetes-dashboard
-  echo "Continuing with setup anyway..."
-fi
-
-# Also wait for the metrics-scraper if it exists
-if kubectl get pods -n kubernetes-dashboard -o name | grep -q "pod/dashboard-metrics-scraper"; then
-  echo "Waiting for metrics-scraper pod to be ready..."
-  kubectl wait \
-    --namespace kubernetes-dashboard \
-    --for=condition=ready pod \
-    --selector=k8s-app=dashboard-metrics-scraper \
-    --timeout=60s || echo "Warning: Timed out waiting for metrics-scraper, but will continue"
-fi
-
 # Get token for admin-user
 echo "=== Getting dashboard access token ==="
 if kubectl -n kubernetes-dashboard get secret admin-user &>/dev/null; then
