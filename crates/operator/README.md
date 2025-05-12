@@ -1,10 +1,10 @@
-# unmcp-operator
+# unmcp
 
 A Kubernetes operator for managing Model Context Protocol (MCP) servers in Kubernetes environments.
 
 ## Overview
 
-`unmcp-operator` is a Rust-based Kubernetes operator that manages the lifecycle of MCP servers in Kubernetes. It watches for MCPServer and MCPPool custom resources and reconciles their state with the underlying Kubernetes resources (Pods and Services).
+`unmcp` is a Rust-based Kubernetes operator that manages the lifecycle of MCP servers in Kubernetes. It watches for MCPServer and MCPPool custom resources and reconciles their state with the underlying Kubernetes resources (Pods and Services).
 
 The operator:
 - Monitors MCPServer and MCPPool resources
@@ -23,7 +23,7 @@ unmcp operator --namespace default
 unmcp server --host 0.0.0.0 --port 3000
 
 # Show help
-unmcp-operator --help
+unmcp --help
 ```
 
 ### Command-line options
@@ -74,7 +74,7 @@ DELETE /api/v1/servers/{uid}         # Delete a server
 
 # Interaction with Servers
 GET /api/v1/servers/{uid}/sse        # Get the SSE stream for a specific server
-POST /api/v1/servers/{uid}/messages  # Send input to a server's stdin
+POST /api/v1/servers/{uid}/message  # Send input to a server's stdin
 
 # Metrics
 GET /api/v1/metrics                  # Get operator metrics (active servers, etc.)

@@ -99,16 +99,6 @@ fn default_idle_timeout() -> u32 {
     60 // 1 minutes
 }
 
-impl Default for MCPServer {
-    fn default() -> Self {
-        Self {
-            metadata: kube::core::ObjectMeta::default(),
-            spec: MCPServerSpec::default(),
-            status: None,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

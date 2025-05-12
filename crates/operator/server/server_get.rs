@@ -10,7 +10,7 @@ pub async fn server_get(
     Path(name): Path<String>,
     State(state): State<Arc<ServerState>>,
 ) -> Response {
-    match state.controller().get_server(&name).await {
+    match state.controller().get_server_by_name(&name).await {
         Ok(server) => {
             let server = server.into_response();
             (StatusCode::OK, Json(server)).into_response()

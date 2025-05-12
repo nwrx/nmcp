@@ -16,7 +16,7 @@ pub async fn pool_get(Path(name): Path<String>, State(state): State<Arc<ServerSt
         .filter(|server| server.spec.pool == name)
         .collect::<Vec<_>>();
 
-    match state.controller().get_pool(&name).await {
+    match state.controller().get_pool_by_name(&name).await {
         Ok(pool) => (StatusCode::OK, Json(pool.into_response(Some(servers)))).into_response(),
         Err(error) => (StatusCode::NOT_FOUND, Json(error.to_string())).into_response(),
     }

@@ -1,54 +1,48 @@
 use super::ServerState;
-use crate::MCPServer;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::sse::Event;
 use axum::response::{IntoResponse, Response, Sse};
-use futures::StreamExt;
-use std::convert::Infallible;
 use std::sync::Arc;
+use tokio_stream::StreamExt;
 
-/// Handler for GET /api/v1/servers/{uid}/sse
+/// Handler for GET /api/v1/servers/{name}/sse
 pub async fn server_sse(
-    Path(uid): Path<String>,
+    Path(name): Path<String>,
     State(state): State<Arc<ServerState>>,
 ) -> Response {
-    // --- First, get the existing server.
-    let server: MCPServer = match state.controller().get_server(&uid).await {
+    let controller = state.controller();
+
+    // --- Get server by name from the controller.
+    let server = match controller.get_server_by_name(&name).await {
         Ok(server) => server,
         Err(_error) => {
-            return (StatusCode::NOT_FOUND, format!("Server '{uid}' not found")).into_response()
+            return (StatusCode::NOT_FOUND, format!("Server '{name}' not found")).into_response()
         }
     };
 
-    // --- Then, we get it's associated Service and Pod.
-    // match state.controller().get_server_service(&server).await {
-    //     Ok(_) => (),
-    //     Err(error) => {
-    //         return (StatusCode::NOT_FOUND, format!("Service not found: {error}")).into_response()
-    //     }
-    // }
-    // match state.controller().get_server_pod(&server).await {
-    //     Ok(_) => (),
-    //     Err(error) => {
-    //         return (StatusCode::NOT_FOUND, format!("Pod not found: {error}")).into_response()
-    //     }
-    // }
-
-    // --- Now proxy the TTY stream to SSE
-    let event_stream = match state.controller().get_server_stream(&server).await {
-        Ok(stream) => stream,
+    // --- Get server SSE channels for communication
+    let channels = match controller.get_server_sse(&server).await {
+        Ok(channels) => channels,
         Err(error) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
         }
     };
 
-    // Serialize the stream of events into SSE format.
-    let sse_stream = event_stream.map(|event| {
-        let event = event.to_string();
-        Ok::<_, Infallible>(Event::default().data(event))
+    // --- Send the request and handle response
+    let endpoint = server.url_messages();
+    let channels = channels.read().await;
+
+    let _ = channels.listen().await;
+    let stream = channels.subscribe(endpoint).await.map(|data| match data {
+        Ok(event) => Ok(event.into()),
+        Err(e) => Err(axum::Error::new(e)),
     });
 
-    // Return the SSE response
-    Sse::new(sse_stream).into_response()
+    // --- Check if the stream is empty
+    let mut response = Sse::new(stream).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::header::HeaderValue::from_static("text/event-stream"),
+    );
+    response
 }

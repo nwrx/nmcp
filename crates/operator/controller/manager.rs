@@ -1,5 +1,5 @@
 use super::{Controller, MCP_SERVER_OPERATOR_MANAGER};
-use crate::{Error, MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec, MCPServerStatus, Result};
+use crate::{Error, MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec, Result};
 use kube::api::{Api, DeleteParams, Patch, PatchParams, PostParams};
 use serde_json::json;
 
@@ -68,27 +68,6 @@ impl Controller {
             .map_err(Error::ServerUpdateFailed)
     }
 
-    /// Update the status of an MCPServer instance
-    pub async fn patch_server_status(
-        &self,
-        name: &str,
-        status: MCPServerStatus,
-    ) -> Result<MCPServer> {
-        let status = json!({
-            "apiVersion": "unmcp.dev/v1",
-            "kind": "MCPServer",
-            "status": status
-        });
-        Api::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                name,
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Apply(status),
-            )
-            .await
-            .map_err(Error::KubeError)
-    }
-
     /// Delete an existing `MCPServer` resource from Kubernetes.
     pub async fn delete_server(&self, name: &str) -> Result<()> {
         match Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
@@ -128,10 +107,7 @@ impl Controller {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        MCPPool, MCPPoolSpec, MCPServer, MCPServerPhase, MCPServerSpec, MCPServerStatus,
-        TestContext,
-    };
+    use crate::{MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec, TestContext};
     use kube::{Api, ResourceExt};
 
     /// Should return an `MCPPool` instance with the correct name and spec.
@@ -344,71 +320,6 @@ mod tests {
 
     ///////////////////////////////////////////////////////////////////////
 
-    /// Should return the patched `MCPServer` resource with the new status.
-    #[tokio::test]
-    async fn test_patch_server_status() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                controller
-                    .create_server("test-server", Default::default())
-                    .await
-                    .unwrap();
-                let new_status = MCPServerStatus {
-                    phase: MCPServerPhase::Running,
-                    ..Default::default()
-                };
-                let patched_server = controller
-                    .patch_server_status("test-server", new_status)
-                    .await
-                    .unwrap();
-                assert_eq!(
-                    patched_server.status.unwrap().phase,
-                    MCPServerPhase::Running
-                );
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    /// Should patch the status of an existing `MCPServer` in Kubernetes.
-    #[tokio::test]
-    async fn test_patch_server_status_in_kube() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                controller
-                    .create_server("test-server", Default::default())
-                    .await
-                    .unwrap();
-                let new_status = MCPServerStatus {
-                    phase: MCPServerPhase::Running,
-                    ..Default::default()
-                };
-                controller
-                    .patch_server_status("test-server", new_status)
-                    .await
-                    .unwrap();
-                let server_fetched = Api::<MCPServer>::namespaced(
-                    controller.get_client(),
-                    &controller.get_namespace(),
-                )
-                .get("test-server")
-                .await
-                .unwrap();
-                assert_eq!(
-                    server_fetched.status.unwrap().phase,
-                    MCPServerPhase::Running
-                );
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    ///////////////////////////////////////////////////////////////////////
-
     /// Should delete the `MCPServer` resource from Kubernetes.
     #[tokio::test]
     async fn test_delete_server() {
@@ -427,6 +338,30 @@ mod tests {
                 .get("test-server")
                 .await;
                 assert!(server_fetched.is_err());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should delete the `MCPPool` resource from Kubernetes.
+    #[tokio::test]
+    async fn test_delete_pool() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                controller
+                    .create_pool("test-pool", Default::default())
+                    .await
+                    .unwrap();
+                controller.delete_pool("test-pool").await.unwrap();
+                let pool_fetched = Api::<MCPPool>::namespaced(
+                    controller.get_client(),
+                    &controller.get_namespace(),
+                )
+                .get("test-pool")
+                .await;
+                assert!(pool_fetched.is_err());
                 Ok(())
             })
             .await

@@ -1,6 +1,5 @@
 use super::Controller;
 use crate::{Error, MCPPool, MCPServer, Result};
-use k8s_openapi::api::core::v1;
 use kube::api::{ListParams, ObjectList};
 use kube::Api;
 
@@ -22,7 +21,7 @@ impl Controller {
     }
 
     /// Gets a specific MCPPool by name.
-    pub async fn get_pool(&self, name: &str) -> Result<MCPPool> {
+    pub async fn get_pool_by_name(&self, name: &str) -> Result<MCPPool> {
         Api::namespaced(self.get_client(), &self.get_namespace())
             .get(name)
             .await
@@ -30,9 +29,9 @@ impl Controller {
     }
 
     /// Gets a specific MCPServer by its UID.
-    pub async fn get_server(&self, uid: &str) -> Result<MCPServer> {
+    pub async fn get_server_by_name(&self, name: &str) -> Result<MCPServer> {
         Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .get(uid)
+            .get(name)
             .await
             .map_err(Error::ServerGetFailed)
     }
@@ -44,27 +43,11 @@ impl Controller {
             .await
             .map_err(Error::ServerPoolNotFound)
     }
-
-    /// Retrieves the Kubernetes Service associated with a given MCPServer.
-    pub async fn get_server_service(&self, server: &MCPServer) -> Result<v1::Service> {
-        Api::namespaced(self.get_client(), &self.get_namespace())
-            .get(&server.name_service())
-            .await
-            .map_err(Error::ServerServiceNotFound)
-    }
-
-    /// Retrieves the Kubernetes Pod associated with a given MCPServer.
-    pub async fn get_server_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
-        Api::<v1::Pod>::namespaced(self.get_client(), &self.get_namespace())
-            .get(&server.name_pod())
-            .await
-            .map_err(Error::ServerPodNotFound)
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{MCPServerSpec, MCPServerTransport, TestContext};
+    use crate::{MCPServerSpec, TestContext};
     use kube::ResourceExt;
 
     /// Should return an empty list of servers when no servers are present.
@@ -140,7 +123,7 @@ mod tests {
             .await
             .run(|controller| async move {
                 let pool_created = controller.create_pool("p1", Default::default()).await?;
-                let pool_fetched = controller.get_pool("p1").await?;
+                let pool_fetched = controller.get_pool_by_name("p1").await?;
                 assert_eq!(pool_fetched.name_any(), pool_created.name_any());
                 assert_eq!(pool_fetched.spec, pool_created.spec);
                 Ok(())
@@ -155,7 +138,7 @@ mod tests {
         TestContext::new()
             .await
             .run(|controller| async move {
-                let result = controller.get_pool("nonexistent").await;
+                let result = controller.get_pool_by_name("nonexistent").await;
                 assert!(result.is_err());
                 Ok(())
             })
@@ -173,7 +156,7 @@ mod tests {
             .run(|controller| async move {
                 let server_created = controller.create_server("s1", Default::default()).await?;
                 let server_uid = server_created.metadata.uid.as_deref().unwrap();
-                let server_fetched = controller.get_server(server_uid).await?;
+                let server_fetched = controller.get_server_by_name(server_uid).await?;
                 assert_eq!(server_fetched.name_any(), server_created.name_any());
                 assert_eq!(server_fetched.spec, server_created.spec);
                 Ok(())
@@ -188,7 +171,7 @@ mod tests {
         TestContext::new()
             .await
             .run(|controller| async move {
-                let result = controller.get_server("nonexistent").await;
+                let result = controller.get_server_by_name("nonexistent").await;
                 assert!(result.is_err());
                 Ok(())
             })
@@ -226,74 +209,6 @@ mod tests {
             .run(|controller| async move {
                 let server = controller.create_server("s1", Default::default()).await?;
                 let result = controller.get_server_pool(&server).await;
-                assert!(result.is_err());
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    ///////////////////////////////////////////////////////////////////////
-
-    /// Should return a server pod when it exists.
-    #[tokio::test]
-    async fn test_get_server_pod() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                let server = controller.create_server("s1", Default::default()).await?;
-                controller.start_server_pod(&server).await?;
-                let pod = controller.get_server_pod(&server).await?;
-                assert_eq!(pod.name_any(), server.name_pod());
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    /// Should reject with `Error::ServerPodNotFound` when the server pod does not exist.
-    #[tokio::test]
-    async fn test_get_server_pod_not_found() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                let server = controller.create_server("s1", Default::default()).await?;
-                let result = controller.get_server_pod(&server).await;
-                assert!(result.is_err());
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    /// Should return a server service when it exists.
-    #[tokio::test]
-    async fn test_get_server_service() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                let spec = MCPServerSpec {
-                    transport: MCPServerTransport::Sse { port: 8080 },
-                    ..Default::default()
-                };
-                let server = controller.create_server("s1", spec).await?;
-                controller.start_server_service(&server).await?;
-                let service = controller.get_server_service(&server).await?;
-                assert_eq!(service.name_any(), server.name_service());
-                Ok(())
-            })
-            .await
-            .unwrap();
-    }
-
-    /// Should reject with `Error::ServerServiceNotFound` when the server service does not exist.
-    #[tokio::test]
-    async fn test_get_server_service_not_found() {
-        TestContext::new()
-            .await
-            .run(|controller| async move {
-                let server = controller.create_server("s1", Default::default()).await?;
-                let result = controller.get_server_service(&server).await;
                 assert!(result.is_err());
                 Ok(())
             })

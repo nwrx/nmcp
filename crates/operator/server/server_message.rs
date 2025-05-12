@@ -1,40 +1,39 @@
-use crate::MCPServer;
+use super::ServerState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use rmcp::model::JsonRpcRequest;
 use std::sync::Arc;
-use tracing::info;
 
-use super::ServerState;
-
-/// Handler for POST /api/v1/servers/{uid}/messages
+/// Handler for POST /api/v1/servers/{name}/message
 pub async fn server_message(
-    Path(uid): Path<String>,
+    Path(name): Path<String>,
     State(state): State<Arc<ServerState>>,
     Json(request): Json<JsonRpcRequest>,
 ) -> Response {
-    // --- First, get the existing server
-    let server: MCPServer = match state.controller().get_server(&uid).await {
+    let controller = state.controller();
+
+    // --- Get server by name from the controller
+    let server = match controller.get_server_by_name(&name).await {
         Ok(server) => server,
         Err(_error) => {
-            return (StatusCode::NOT_FOUND, format!("Server '{uid}' not found")).into_response()
+            return (StatusCode::NOT_FOUND, format!("Server '{name}' not found")).into_response()
         }
     };
 
-    // --- Send the input to the server's stdin
-    let json_str = serde_json::to_string(&request).unwrap();
-    info!("Sending input to server: {}", json_str);
-    match state
-        .controller()
-        .send_to_server_stdin(&server, json_str)
-        .await
-    {
-        Ok(_) => (StatusCode::OK, "Input sent to server").into_response(),
+    // --- Get server SSE channels for communication
+    let channels = match controller.get_server_sse(&server).await {
+        Ok(channels) => channels,
         Err(error) => {
-            tracing::error!("Failed to send input to server: {}", error);
-            (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
         }
+    };
+
+    // --- Send the request and handle response
+    let channels = channels.read().await;
+    match channels.send(request).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
     }
 }

@@ -1,16 +1,19 @@
 use crate::{get_kube_client, Result};
+use attach::MCPServerTransportStdio;
 use kube::Client;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use structopt::StructOpt;
+use tokio::sync::RwLock;
 use tracing_subscriber::fmt::format::FmtSpan;
 
+mod attach;
 mod getter;
 mod manager;
 mod operator;
-mod stream;
+mod service;
+mod status;
 
-/// Re-export the necessary modules for external use.
-pub use stream::MCPServerStreamEvent;
+pub use attach::MCPEvent;
 
 /// The name of the Kubernetes operator manager. Used to identify the operator in the Kubernetes API.
 pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.unmcp.dev/operator";
@@ -37,17 +40,18 @@ pub struct ControllerOptions {
 
 #[derive(Clone)]
 pub struct Controller {
-    namespace: String,
     client: Client,
+    namespace: String,
+    channels: Arc<RwLock<HashMap<String, Arc<RwLock<MCPServerTransportStdio>>>>>,
 }
 
 impl Controller {
     /// Create a new instance of the Controller.
     pub async fn new(options: &ControllerOptions) -> Result<Self> {
-        let client = get_kube_client(options.kubeconfig.clone()).await?;
         Ok(Self {
             namespace: options.namespace.clone(),
-            client: client.clone(),
+            client: get_kube_client(options.kubeconfig.clone()).await?,
+            channels: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 

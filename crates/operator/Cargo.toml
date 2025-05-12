@@ -1,5 +1,5 @@
 [package]
-name = "unmcp-operator"
+name = "unmcp"
 version.workspace = true
 edition.workspace = true
 description = "Kubernetes operator for managed MCP servers"
@@ -33,11 +33,12 @@ structopt = "0.3.26"
 tower-http = { version = "0.4.4", features = ["trace"] }
 kube-client = "0.99.0"
 rmcp.workspace = true
+strum_macros = "0.27.1"
 
 [[bin]]
-name = "unmcp-operator"
+name = "unmcp"
 path = "main.rs"
 
 [lib]
-name = "unmcp_operator"
+name = "unmcp"
 path = "lib.rs"

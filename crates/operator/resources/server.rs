@@ -46,7 +46,7 @@ impl MCPServer {
 
     /// Returns the URL for the `MCPServer` messages endpoint.
     pub fn url_messages(&self) -> String {
-        format!("{}/messages", self.url())
+        format!("{}/message", self.url())
     }
 
     /// Returns the URL for the `MCPPool` resource.
@@ -204,7 +204,7 @@ mod tests {
             },
         )
         .url_messages();
-        assert_eq!(url, "/api/v1/servers/test-server/messages");
+        assert_eq!(url, "/api/v1/servers/test-server/message");
     }
 
     #[test]
@@ -226,10 +226,7 @@ mod tests {
         assert_eq!(response.transport_type, "sse");
         assert_eq!(response.url, "/api/v1/servers/test-server");
         assert_eq!(response.url_sse, "/api/v1/servers/test-server/sse");
-        assert_eq!(
-            response.url_messages,
-            "/api/v1/servers/test-server/messages"
-        );
+        assert_eq!(response.url_messages, "/api/v1/servers/test-server/message");
         assert_eq!(response.pool_url, "/api/v1/pools/test-pool");
     }
 

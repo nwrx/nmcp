@@ -11,13 +11,17 @@ pub enum MCPServerPhase {
     #[default]
     Pending,
 
-    /// Server is currently running and processing requests. Meaning it's
-    /// Pod and Service are up and running.
-    Running,
+    /// The server has been requested to be started but is not yet running
+    /// (e.g., waiting for resources to be created).
+    Requested,
 
     /// Server is starting up and not yet ready to process requests
     /// (e.g., waiting for resources to be created or initialized).
     Starting,
+
+    /// Server is currently running and processing requests. Meaning it's
+    /// Pod and Service are up and running.
+    Running,
 
     /// Server is shutting down and not processing requests
     /// (e.g., waiting for resources to be deleted or cleaned up).
@@ -46,11 +50,107 @@ pub enum MCPServerConditionType {
     #[default]
     Pending,
 
-    /// Indicates whether the Pod is available
-    Starting,
+    /// Indicates that the server has been requested to start but is not yet running
+    Requested,
 
-    /// Indicates whether the Service is available
+    /// Pod associated with the server is starting up
+    PodStarting,
+
+    /// Pod associated with the server is started and running
+    PodRunning,
+
+    /// Indicates whether the Pod is available and ready to process requests
+    PodReady,
+
+    /// Indicates whether the Pod is terminating
+    PodTerminating,
+
+    /// Indicates whether the Pod has been terminated
+    PodTerminated,
+
+    /// Indicates whether the Pod is in an error state
+    PodError,
+
+    /// Service associated with the Pod is starting up
+    ServiceStarting,
+
+    /// Service associated with the Pod is available and ready to process requests
     ServiceReady,
+
+    /// Indicates whether the Pod is being started
+    ServiceTerminating,
+
+    /// Indicates whether the Pod is being started
+    ServiceTerminated,
+
+    /// Indicates whether the Pod is in an error state
+    ServiceError,
+
+    /// Indicates whether the service is ready.
+    Ready,
+}
+
+impl std::fmt::Display for MCPServerConditionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MCPServerConditionType::Pending => write!(f, "Pending"),
+            MCPServerConditionType::Requested => write!(f, "Requested"),
+            MCPServerConditionType::PodStarting => write!(f, "PodStarting"),
+            MCPServerConditionType::PodRunning => write!(f, "PodRunning"),
+            MCPServerConditionType::PodReady => write!(f, "PodReady"),
+            MCPServerConditionType::PodTerminating => write!(f, "PodTerminating"),
+            MCPServerConditionType::PodTerminated => write!(f, "PodTerminated"),
+            MCPServerConditionType::PodError => write!(f, "PodError"),
+            MCPServerConditionType::ServiceStarting => write!(f, "ServiceStarting"),
+            MCPServerConditionType::ServiceReady => write!(f, "ServiceReady"),
+            MCPServerConditionType::ServiceTerminating => write!(f, "ServiceTerminating"),
+            MCPServerConditionType::ServiceTerminated => write!(f, "ServiceTerminated"),
+            MCPServerConditionType::ServiceError => write!(f, "ServiceError"),
+            MCPServerConditionType::Ready => write!(f, "Ready"),
+        }
+    }
+}
+
+impl MCPServerConditionType {
+    /// Returns the message associated with the condition type.
+    pub fn to_message(&self) -> String {
+        match self {
+            MCPServerConditionType::Pending => "Server is pending".to_string(),
+            MCPServerConditionType::Requested => "Server has been requested".to_string(),
+            MCPServerConditionType::PodStarting => "Pod is starting".to_string(),
+            MCPServerConditionType::PodRunning => "Pod is running".to_string(),
+            MCPServerConditionType::PodReady => "Pod is ready".to_string(),
+            MCPServerConditionType::PodTerminating => "Pod is terminating".to_string(),
+            MCPServerConditionType::PodTerminated => "Pod has been terminated".to_string(),
+            MCPServerConditionType::PodError => "Pod is in an error state".to_string(),
+            MCPServerConditionType::ServiceStarting => "Service is starting".to_string(),
+            MCPServerConditionType::ServiceReady => "Service is ready".to_string(),
+            MCPServerConditionType::ServiceTerminating => "Service is terminating".to_string(),
+            MCPServerConditionType::ServiceTerminated => "Service has been terminated".to_string(),
+            MCPServerConditionType::ServiceError => "Service is in an error state".to_string(),
+            MCPServerConditionType::Ready => "Service is ready".to_string(),
+        }
+    }
+
+    /// Returns the status associated with the condition type.
+    pub fn to_status(&self) -> String {
+        match self {
+            MCPServerConditionType::Pending => "False".to_string(),
+            MCPServerConditionType::Requested => "False".to_string(),
+            MCPServerConditionType::PodStarting => "False".to_string(),
+            MCPServerConditionType::PodRunning => "False".to_string(),
+            MCPServerConditionType::PodReady => "False".to_string(),
+            MCPServerConditionType::PodTerminating => "False".to_string(),
+            MCPServerConditionType::PodTerminated => "False".to_string(),
+            MCPServerConditionType::PodError => "False".to_string(),
+            MCPServerConditionType::ServiceStarting => "False".to_string(),
+            MCPServerConditionType::ServiceReady => "False".to_string(),
+            MCPServerConditionType::ServiceTerminating => "False".to_string(),
+            MCPServerConditionType::ServiceTerminated => "False".to_string(),
+            MCPServerConditionType::ServiceError => "False".to_string(),
+            MCPServerConditionType::Ready => "True".to_string(),
+        }
+    }
 }
 
 /// MCPServer status

@@ -1,7 +1,14 @@
+use kube::CustomResourceExt;
+use std::path::PathBuf;
 use structopt::StructOpt;
-use unmcp_operator::{Controller, ControllerOptions, Result, Server, ServerOptions};
+use tokio::fs::File;
+use tokio::io::{stdout, AsyncWriteExt};
+use unmcp::{
+    serialize, Controller, ControllerOptions, Error, MCPPool, MCPServer, Result, Server,
+    ServerOptions,
+};
 
-/// Command-line options for unmcp-operator
+/// Command-line options for unmcp
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(
     name = "unmcp",
@@ -20,6 +27,26 @@ pub enum Command {
         global: ControllerOptions,
         #[structopt(flatten)]
         options: ServerOptions,
+    },
+
+    /// Export CRD or schema definitions
+    #[structopt(name = "export")]
+    Export {
+        /// Type of resource to export: crd or schema
+        #[structopt(short, long, possible_values = &["crd", "schema"])]
+        r#type: String,
+
+        /// Resource to export: pool or server
+        #[structopt(short, long, possible_values = &["pool", "server"])]
+        resource: String,
+
+        /// Output format: json or yaml
+        #[structopt(short, long, default_value = "yaml", possible_values = &["json", "yaml"])]
+        format: String,
+
+        /// Output file (optional, defaults to stdout)
+        #[structopt(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -40,6 +67,42 @@ async fn main() -> Result<()> {
             controller.start_tracing();
             let server = Server::new(options, controller).await?;
             let _ = server.start().await;
+        }
+
+        // Export CRD or schema
+        Command::Export {
+            r#type,
+            resource,
+            format,
+            output,
+        } => {
+            let serialized = match (r#type.as_str(), resource.as_str()) {
+                ("crd", "pool") => serialize(&MCPPool::crd(), &format)?,
+                ("crd", "server") => serialize(&MCPServer::crd(), &format)?,
+                ("schema", "pool") => serialize(&schemars::schema_for!(MCPPool), &format)?,
+                ("schema", "server") => serialize(&schemars::schema_for!(MCPServer), &format)?,
+                _ => {
+                    return Err(Error::Internal(format!(
+                        "Invalid type/resource combination: {type}/{resource}"
+                    )));
+                }
+            };
+
+            // --- Write to file or stdout
+            match output {
+                Some(path) => {
+                    let mut file = File::create(path).await.map_err(Error::WriteError)?;
+                    file.write_all(serialized.as_bytes())
+                        .await
+                        .map_err(Error::WriteError)?;
+                }
+                None => {
+                    stdout()
+                        .write_all(serialized.as_bytes())
+                        .await
+                        .map_err(Error::WriteError)?;
+                }
+            }
         }
     }
     Ok(())

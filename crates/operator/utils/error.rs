@@ -6,6 +6,27 @@ use thiserror::Error;
 /// Errors that can occur when working with MCP resources
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Internal error: {0}")]
+    Internal(String),
+
+    #[error("{0}")]
+    JsonError(#[from] serde_json::Error),
+
+    #[error("Could not serialize the object into JSON: {0}")]
+    SerializeJsonError(#[source] serde_json::Error),
+
+    #[error("Could not deserialize the object from JSON: {0}")]
+    DeserializeJsonError(#[source] serde_json::Error),
+
+    #[error("Could not serialize the object into YAML: {0}")]
+    SerializeYamlError(#[source] YamlError),
+
+    #[error("Unsupported output format: {0}")]
+    UnsupportedFormat(String),
+
+    #[error("Failed to write output to file: {0}")]
+    WriteError(#[source] IoError),
+
     ///////////////////////////////////////////////////////////
     /// Transparent errors
     ///////////////////////////////////////////////////////////
@@ -99,6 +120,13 @@ pub enum Error {
 
     #[error("Failed to attach to the Pod TTY stream: {0}")]
     ServerStreamError(#[source] kube::Error),
+
+    ///////////////////////////////////////////////////////////
+    /// MCPServer errors
+    ///////////////////////////////////////////////////////////
+
+    #[error("Failed to aquire the lock: {0}")]
+    TryLockError(#[from] tokio::sync::TryLockError),
 
     ///////////////////////////////////////////////////////////
     /// Axum errors

@@ -111,7 +111,7 @@ impl Server {
             .route("/api/v1/servers/{uid}", delete(server_delete))
             .route("/api/v1/servers/{uid}", post(server_update))
             .route("/api/v1/servers/{uid}/sse", get(server_sse))
-            .route("/api/v1/servers/{uid}/messages", post(server_message))
+            .route("/api/v1/servers/{uid}/message", post(server_message))
             // Pool endpoints
             .route("/api/v1/pools", get(pool_list))
             .route("/api/v1/pools", post(pool_create))
