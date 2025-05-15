@@ -1,5 +1,8 @@
+use schemars::gen::SchemaGenerator;
+use schemars::schema::{InstanceType, Metadata, Schema, SchemaObject};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 /// MCPServer transport configuration
@@ -15,7 +18,73 @@ pub enum MCPServerTransport {
     /// Server-Sent Events (HTTP). This transport type is used for
     /// communication over HTTP.
     #[serde(rename = "sse")]
-    Sse { port: u16 },
+    Sse {
+        /// When the transport type is `sse`, this field specifies the port
+        /// on which the server will listen for incoming connections. This field
+        /// is required for the `sse` transport type.
+        port: u16,
+    },
+}
+
+// Custom implementation of JsonSchema to avoid conflicts with the "type" tag field
+impl JsonSchema for MCPServerTransport {
+    fn schema_name() -> String {
+        "MCPServerTransport".to_string()
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        // Create a schema object for the enum - simplified approach
+        let mut schema_obj = SchemaObject {
+            metadata: Some(Box::new(Metadata {
+                title: Some("MCPServer Transport Configuration".to_string()),
+                description: Some("Configuration for the MCP server transport layer".to_string()),
+                ..Default::default()
+            })),
+            instance_type: Some(schemars::schema::InstanceType::Object.into()),
+            ..Default::default()
+        };
+
+        // Define the type field schema that accepts either "stdio" or "sse"
+        let type_schema = SchemaObject {
+            metadata: Some(Box::new(Metadata {
+                description: Some("Transport type".to_string()),
+                ..Default::default()
+            })),
+            instance_type: Some(InstanceType::String.into()),
+            enum_values: Some(vec!["stdio".into(), "sse".into()]),
+            ..Default::default()
+        };
+
+        // Define the port field schema (optional)
+        let port_schema = SchemaObject {
+            metadata: Some(Box::new(Metadata {
+                description: Some(
+                    "Port number for SSE transport, required when type is 'sse'".to_string(),
+                ),
+                ..Default::default()
+            })),
+            instance_type: Some(InstanceType::Integer.into()),
+            ..Default::default()
+        };
+
+        // Set the properties on the schema object
+        schema_obj.object = Some(Box::new(schemars::schema::ObjectValidation {
+            properties: {
+                let mut properties = schemars::Map::new();
+                properties.insert("type".to_string(), Schema::Object(type_schema));
+                properties.insert("port".to_string(), Schema::Object(port_schema));
+                properties
+            },
+            required: {
+                let mut required = BTreeSet::new();
+                required.insert("type".to_string());
+                required
+            },
+            ..Default::default()
+        }));
+
+        Schema::Object(schema_obj)
+    }
 }
 
 impl MCPServerTransport {
@@ -42,69 +111,6 @@ impl Display for MCPServerTransport {
             MCPServerTransport::Sse { port } => write!(f, "sse-{port}"),
             MCPServerTransport::Stdio => write!(f, "stdio"),
         }
-    }
-}
-
-// Implement JsonSchema separately to avoid conflicts
-impl JsonSchema for MCPServerTransport {
-    fn schema_name() -> String {
-        "MCPServerTransport".to_string()
-    }
-
-    fn json_schema(_gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        // Create a single schema with all possible properties
-        let schema = schemars::schema::SchemaObject {
-            metadata: Some(Box::new(schemars::schema::Metadata {
-                title: Some("Transport Configuration".to_string()),
-                description: Some("Configures how the server communicates".to_string()),
-                ..Default::default()
-            })),
-            instance_type: Some(schemars::schema::InstanceType::Object.into()),
-            object: Some(Box::new(schemars::schema::ObjectValidation {
-                required: ["type"].iter().map(|&s| s.to_string()).collect(),
-                properties: {
-                    let mut props = schemars::Map::new();
-
-                    // Define type property only once with all possible values
-                    let type_schema = schemars::schema::SchemaObject {
-                        metadata: Some(Box::new(schemars::schema::Metadata {
-                            description: Some("Transport type".to_string()),
-                            ..Default::default()
-                        })),
-                        instance_type: Some(schemars::schema::InstanceType::String.into()),
-                        enum_values: Some(vec![
-                            serde_json::Value::String("stdio".to_string()),
-                            serde_json::Value::String("sse".to_string()),
-                        ]),
-                        ..Default::default()
-                    };
-                    props.insert(
-                        "type".to_string(),
-                        schemars::schema::Schema::Object(type_schema),
-                    );
-
-                    // Define port as an optional property
-                    let port_schema = schemars::schema::SchemaObject {
-                        metadata: Some(Box::new(schemars::schema::Metadata {
-                            description: Some("Port for SSE transport".to_string()),
-                            ..Default::default()
-                        })),
-                        instance_type: Some(schemars::schema::InstanceType::Integer.into()),
-                        ..Default::default()
-                    };
-                    props.insert(
-                        "port".to_string(),
-                        schemars::schema::Schema::Object(port_schema),
-                    );
-
-                    props
-                },
-                ..Default::default()
-            })),
-            ..Default::default()
-        };
-
-        schemars::schema::Schema::Object(schema)
     }
 }
 

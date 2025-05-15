@@ -3,9 +3,12 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::fs::File;
 use tokio::io::{stdout, AsyncWriteExt};
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use unmcp::{
-    serialize, Controller, ControllerOptions, Error, MCPPool, MCPServer, Result, Server,
-    ServerOptions,
+    serialize, Application, ApplicationOptions, Controller, ControllerOptions, Error, MCPPool,
+    MCPServer, Result,
 };
 
 /// Command-line options for unmcp
@@ -24,9 +27,10 @@ pub enum Command {
     #[structopt(name = "server")]
     Server {
         #[structopt(flatten)]
-        global: ControllerOptions,
+        controller_options: ControllerOptions,
+
         #[structopt(flatten)]
-        options: ServerOptions,
+        server_options: ApplicationOptions,
     },
 
     /// Export CRD or schema definitions
@@ -53,19 +57,34 @@ pub enum Command {
 /// Main entry point for the operator
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .without_time()
+                .with_file(true)
+                .with_level(true)
+                .with_target(false)
+                .with_line_number(true),
+        )
+        .with(filter_fn(|metadata| {
+            metadata.module_path().unwrap_or_default().contains("unmcp")
+        }))
+        .init();
+
     match Command::from_args() {
         // Start the operator.
         Command::Operator(options) => {
             let controller = Controller::new(&options).await?;
-            controller.start_tracing();
             controller.start_server_operator().await?;
         }
 
         // Start the API server.
-        Command::Server { global, options } => {
-            let controller = Controller::new(&global).await?;
-            controller.start_tracing();
-            let server = Server::new(options, controller).await?;
+        Command::Server {
+            controller_options,
+            server_options,
+        } => {
+            let controller = Controller::new(&controller_options).await?;
+            let server = Application::new(server_options, controller).await?;
             let _ = server.start().await;
         }
 

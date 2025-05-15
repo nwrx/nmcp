@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use chrono::{DateTime, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use schemars::JsonSchema;
@@ -9,19 +11,19 @@ use serde::{Deserialize, Serialize};
 pub enum MCPServerPhase {
     /// Server is not running and has no traffic
     #[default]
-    Pending,
+    Idle,
 
     /// The server has been requested to be started but is not yet running
     /// (e.g., waiting for resources to be created).
     Requested,
 
-    /// Server is starting up and not yet ready to process requests
-    /// (e.g., waiting for resources to be created or initialized).
-    Starting,
-
     /// Server is currently running and processing requests. Meaning it's
     /// Pod and Service are up and running.
     Running,
+
+    /// Server is starting up and not yet ready to process requests
+    /// (e.g., waiting for resources to be created or initialized).
+    Starting,
 
     /// Server is shutting down and not processing requests
     /// (e.g., waiting for resources to be deleted or cleaned up).
@@ -29,16 +31,7 @@ pub enum MCPServerPhase {
 
     /// Server is in an error state and not processing requests
     /// (e.g., due to a failure in the server or its resources).
-    Error,
-
-    /// Server is waiting to be started because the pool has reached
-    /// the max_servers_active limit. It will start when other servers
-    /// are terminated and resources become available.
-    Waiting,
-
-    /// Server is ignored because the pool has reached the max_servers_limit.
-    /// It will not be started until other servers are deleted from the pool.
-    Ignored,
+    Failed,
 }
 
 /// MCPServerConditionType follows Kubernetes condition pattern
@@ -48,28 +41,31 @@ pub enum MCPServerPhase {
 pub enum MCPServerConditionType {
     /// Primary condition indicating if the server is ready to process requests
     #[default]
-    Pending,
+    Idle,
 
     /// Indicates that the server has been requested to start but is not yet running
     Requested,
 
+    /// Indicates whether the service is ready.
+    Running,
+
     /// Pod associated with the server is starting up
-    PodStarting,
+    PodPending,
 
     /// Pod associated with the server is started and running
     PodRunning,
 
-    /// Indicates whether the Pod is available and ready to process requests
-    PodReady,
-
     /// Indicates whether the Pod is terminating
     PodTerminating,
+
+    /// Indicates that an error occurred while terminating the Pod
+    PodTerminationFailed(String),
 
     /// Indicates whether the Pod has been terminated
     PodTerminated,
 
     /// Indicates whether the Pod is in an error state
-    PodError,
+    PodFailed(String),
 
     /// Service associated with the Pod is starting up
     ServiceStarting,
@@ -84,30 +80,12 @@ pub enum MCPServerConditionType {
     ServiceTerminated,
 
     /// Indicates whether the Pod is in an error state
-    ServiceError,
-
-    /// Indicates whether the service is ready.
-    Ready,
+    ServiceFailed(String),
 }
 
-impl std::fmt::Display for MCPServerConditionType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MCPServerConditionType::Pending => write!(f, "Pending"),
-            MCPServerConditionType::Requested => write!(f, "Requested"),
-            MCPServerConditionType::PodStarting => write!(f, "PodStarting"),
-            MCPServerConditionType::PodRunning => write!(f, "PodRunning"),
-            MCPServerConditionType::PodReady => write!(f, "PodReady"),
-            MCPServerConditionType::PodTerminating => write!(f, "PodTerminating"),
-            MCPServerConditionType::PodTerminated => write!(f, "PodTerminated"),
-            MCPServerConditionType::PodError => write!(f, "PodError"),
-            MCPServerConditionType::ServiceStarting => write!(f, "ServiceStarting"),
-            MCPServerConditionType::ServiceReady => write!(f, "ServiceReady"),
-            MCPServerConditionType::ServiceTerminating => write!(f, "ServiceTerminating"),
-            MCPServerConditionType::ServiceTerminated => write!(f, "ServiceTerminated"),
-            MCPServerConditionType::ServiceError => write!(f, "ServiceError"),
-            MCPServerConditionType::Ready => write!(f, "Ready"),
-        }
+impl Display for MCPServerConditionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 
@@ -115,40 +93,34 @@ impl MCPServerConditionType {
     /// Returns the message associated with the condition type.
     pub fn to_message(&self) -> String {
         match self {
-            MCPServerConditionType::Pending => "Server is pending".to_string(),
+            MCPServerConditionType::Idle => "Server is pending".to_string(),
             MCPServerConditionType::Requested => "Server has been requested".to_string(),
-            MCPServerConditionType::PodStarting => "Pod is starting".to_string(),
+            MCPServerConditionType::PodPending => "Pod is starting".to_string(),
             MCPServerConditionType::PodRunning => "Pod is running".to_string(),
-            MCPServerConditionType::PodReady => "Pod is ready".to_string(),
             MCPServerConditionType::PodTerminating => "Pod is terminating".to_string(),
             MCPServerConditionType::PodTerminated => "Pod has been terminated".to_string(),
-            MCPServerConditionType::PodError => "Pod is in an error state".to_string(),
+            MCPServerConditionType::PodTerminationFailed(error) => {
+                format!("Pod termination failed: {error}")
+            }
+            MCPServerConditionType::PodFailed(error) => {
+                format!("Pod is in an error state: {error}")
+            }
             MCPServerConditionType::ServiceStarting => "Service is starting".to_string(),
             MCPServerConditionType::ServiceReady => "Service is ready".to_string(),
             MCPServerConditionType::ServiceTerminating => "Service is terminating".to_string(),
             MCPServerConditionType::ServiceTerminated => "Service has been terminated".to_string(),
-            MCPServerConditionType::ServiceError => "Service is in an error state".to_string(),
-            MCPServerConditionType::Ready => "Service is ready".to_string(),
+            MCPServerConditionType::ServiceFailed(error) => {
+                format!("Service is in an error state: {error}")
+            }
+            MCPServerConditionType::Running => "Service is ready".to_string(),
         }
     }
 
     /// Returns the status associated with the condition type.
     pub fn to_status(&self) -> String {
         match self {
-            MCPServerConditionType::Pending => "False".to_string(),
-            MCPServerConditionType::Requested => "False".to_string(),
-            MCPServerConditionType::PodStarting => "False".to_string(),
-            MCPServerConditionType::PodRunning => "False".to_string(),
-            MCPServerConditionType::PodReady => "False".to_string(),
-            MCPServerConditionType::PodTerminating => "False".to_string(),
-            MCPServerConditionType::PodTerminated => "False".to_string(),
-            MCPServerConditionType::PodError => "False".to_string(),
-            MCPServerConditionType::ServiceStarting => "False".to_string(),
-            MCPServerConditionType::ServiceReady => "False".to_string(),
-            MCPServerConditionType::ServiceTerminating => "False".to_string(),
-            MCPServerConditionType::ServiceTerminated => "False".to_string(),
-            MCPServerConditionType::ServiceError => "False".to_string(),
-            MCPServerConditionType::Ready => "True".to_string(),
+            MCPServerConditionType::Running => "True".to_string(),
+            _ => "False".to_string(),
         }
     }
 }
@@ -191,7 +163,7 @@ mod tests {
         assert_eq!(status.started_at, None);
         assert_eq!(status.stopped_at, None);
         assert_eq!(status.last_request_at, None);
-        assert_eq!(status.phase, MCPServerPhase::Pending);
+        assert_eq!(status.phase, MCPServerPhase::Idle);
         assert!(status.conditions.is_empty());
         assert_eq!(status.total_requests, 0);
         assert_eq!(status.current_connections, 0);

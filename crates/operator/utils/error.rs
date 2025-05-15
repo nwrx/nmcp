@@ -1,140 +1,156 @@
+use axum::{http::StatusCode, response::IntoResponse};
+use axum_thiserror::ErrorStatus;
 use core::result::Result as StdResult;
-use serde_yaml::Error as YamlError;
-use std::io::Error as IoError;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Shorthand Result type for MCP operations
+pub type Result<T, E = Error> = StdResult<T, E>;
+
 /// Errors that can occur when working with MCP resources
-#[derive(Error, Debug)]
+#[derive(Error, Debug, ErrorStatus)]
 pub enum Error {
-    #[error("Internal error: {0}")]
-    Internal(String),
-
-    #[error("{0}")]
-    JsonError(#[from] serde_json::Error),
-
-    #[error("Could not serialize the object into JSON: {0}")]
-    SerializeJsonError(#[source] serde_json::Error),
-
-    #[error("Could not deserialize the object from JSON: {0}")]
-    DeserializeJsonError(#[source] serde_json::Error),
-
-    #[error("Could not serialize the object into YAML: {0}")]
-    SerializeYamlError(#[source] YamlError),
-
-    #[error("Unsupported output format: {0}")]
-    UnsupportedFormat(String),
-
-    #[error("Failed to write output to file: {0}")]
-    WriteError(#[source] IoError),
-
     ///////////////////////////////////////////////////////////
     /// Transparent errors
     ///////////////////////////////////////////////////////////
 
+    #[error("{0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    JsonError(#[from] serde_json::Error),
+
     #[error("Failed to create config from kubeconfig: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
     KubeconfigError(#[from] kube::config::KubeconfigError),
 
     #[error("[KubeError]: {0} ({0:?})")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
     KubeError(#[from] kube::Error),
+
+    #[error("Failed to create the Axum server: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    AxumError(#[from] axum::Error),
+
+    #[error("Failed to aquire the lock: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    TryLockError(#[from] tokio::sync::TryLockError),
+
+    #[error("Failed to load in-cluster config: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    InClusterError(#[from] kube::config::InClusterError),
+
+    #[error("Kubernetes finalizer error: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    KubeFinalizerError(#[from] kube::runtime::finalizer::Error<Box<Error>>),
+
+    ///////////////////////////////////////////////////////////
+    /// Serialization errors
+    ///////////////////////////////////////////////////////////
+
+    #[error("Internal error: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    Internal(String),
+
+    #[error("Could not serialize the object into serde_json: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    SerializeJsonError(#[source] serde_json::Error),
+
+    #[error("Could not deserialize the object from serde_json: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    DeserializeJsonError(#[source] serde_json::Error),
+
+    #[error("Could not serialize the object into serde_yaml: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    SerializeYamlError(#[source] serde_yaml::Error),
+
+    #[error("Unsupported output format: {0}")]
+    #[status(StatusCode::BAD_REQUEST)]
+    UnsupportedFormat(String),
+
+    #[error("Failed to write output to file: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    WriteError(#[source] std::io::Error),
 
     ///////////////////////////////////////////////////////////
     /// Kubernetes client errors
     ///////////////////////////////////////////////////////////
 
     #[error("Kubeconfig path does not exist: {0}")]
-    KubeconfigPathNotExists(#[source] IoError),
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    KubeconfigPathNotExists(#[source] std::io::Error),
 
     #[error("Error while parsing kubeconfig: {0}")]
-    KubeConfigParseError(#[source] YamlError),
-
-    #[error("Error while creating the kube client: {0}")]
-    KubeClientError(#[source] kube::Error),
-
-    #[error("Failed to load in-cluster config: {0}")]
-    InClusterError(#[from] kube::config::InClusterError),
-
-    ///////////////////////////////////////////////////////////
-    /// Pool errors
-    ///////////////////////////////////////////////////////////
-
-    #[error("Failed to list MCPPool resources: {0}")]
-    PoolListError(#[source] kube::Error),
-
-    #[error("Failed to list MCPServer resources: {0}")]
-    PoolServerListError(#[source] kube::Error),
-
-    #[error("Could not find MCPServer resource with name: {0}")]
-    PoolServerNotFoundError(String),
-
-    #[error("Failed to create MCPPool resource: {0}")]
-    PoolCreateError(#[source] kube::Error),
-
-    #[error("Failed to update MCPPool resource: {0}")]
-    PoolUpdateError(#[source] kube::Error),
-
-    #[error("Failed to delete MCPPool resource: {0}")]
-    PoolDeleteError(#[source] kube::Error),
-
-    #[error("Failed to get MCPPool resource: {0:?}")]
-    PoolGetError(#[source] kube::Error),
-
-    ///////////////////////////////////////////////////////////
-    /// MCPServer errors
-    ///////////////////////////////////////////////////////////
-
-    #[error("Failed to get the Pod assigned to the MCPServer")]
-    ServerPodNotFound(#[source] kube::Error),
-
-    #[error("{0}")]
-    ServerPodTemplate(#[source] kube::Error),
-
-    #[error("Failed to delete the Pod assigned to the MCPServer")]
-    ServerPodDelete(#[source] kube::Error),
-
-    #[error("Failed to get the Service assigned to the MCPServer")]
-    ServerServiceNotFound(#[source] kube::Error),
-
-    #[error("{0}")]
-    ServerServiceTemplate(#[source] kube::Error),
-
-    #[error("Failed to delete the Service assigned to the MCPServer")]
-    ServerServiceDelete(#[source] kube::Error),
-
-    #[error("Failed to get the pool assigned to the MCPServer")]
-    ServerPoolNotFound(#[source] kube::Error),
-
-    #[error("Failed to create MCPServer resource: {0}")]
-    ServerCreateFailed(#[source] kube::Error),
-
-    #[error("Failed to update MCPServer resource: {0}")]
-    ServerUpdateFailed(#[source] kube::Error),
-
-    #[error("Failed to delete MCPServer resource: {0}")]
-    ServerDeleteFailed(#[source] kube::Error),
-
-    #[error("Failed to get MCPServer resource: {0}")]
-    ServerGetFailed(#[source] kube::Error),
-
-    #[error("MCPServer with UID {0} not found")]
-    ServerNotFound(String),
-
-    #[error("Failed to attach to the Pod TTY stream: {0}")]
-    ServerStreamError(#[source] kube::Error),
-
-    ///////////////////////////////////////////////////////////
-    /// MCPServer errors
-    ///////////////////////////////////////////////////////////
-
-    #[error("Failed to aquire the lock: {0}")]
-    TryLockError(#[from] tokio::sync::TryLockError),
-
-    ///////////////////////////////////////////////////////////
-    /// Axum errors
-    ///////////////////////////////////////////////////////////
-
-    #[error("Failed to create the Axum server: {0}")]
-    AxumError(#[from] axum::Error),
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    KubeConfigParseError(#[source] serde_yaml::Error),
 }
 
-/// Shorthand Result type for MCP operations
-pub type Result<T, E = Error> = StdResult<T, E>;
+impl Error {
+    pub fn to_message(&self) -> String {
+        match self {
+            Error::KubeError(kube::Error::Api(response)) => response.message.clone(),
+            Error::KubeFinalizerError(error) => match error {
+                kube::runtime::finalizer::Error::AddFinalizer(error) => {
+                    format!("Failed to add finalizer: {error}")
+                }
+                kube::runtime::finalizer::Error::RemoveFinalizer(error) => {
+                    format!("Failed to remove finalizer: {error}")
+                }
+                kube::runtime::finalizer::Error::ApplyFailed(error) => {
+                    format!("Failed to apply finalizer: {}", error.to_message())
+                }
+                kube::runtime::finalizer::Error::CleanupFailed(error) => {
+                    format!("Failed to clean up finalizer: {}", error.to_message())
+                }
+                kube::runtime::finalizer::Error::UnnamedObject => "Object has no name".to_string(),
+                kube::runtime::finalizer::Error::InvalidFinalizer => {
+                    "Invalid finalizer".to_string()
+                }
+            },
+            _ => format!("Internal error: {:?}", self.to_string()),
+        }
+    }
+}
+
+/// Error body for the API response
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorBody {
+    /// The name or identifier of the error. It more or less corresponds to the underlying
+    /// scope or module where the error occurred and is used for debugging.
+    pub name: String,
+
+    /// A human-readable message describing the error that occurred. This message is intended
+    /// for end-users and should be clear and concise.
+    pub message: String,
+
+    /// The HTTP status code associated with the error. This is useful for clients to understand
+    /// the nature of the error and how to handle it.
+    pub status_code: u16,
+
+    /// A human-readable message describing the status of the error. This message is intended
+    /// for end-users and should be clear and concise.
+    pub status_message: String,
+}
+
+impl From<Error> for ErrorBody {
+    fn from(error: Error) -> Self {
+        match &error {
+            Error::KubeError(kube::Error::Api(response)) => Self {
+                name: "KubeError".into(),
+                message: response.message.clone(),
+                status_code: response.code,
+                status_message: response.status.clone(),
+            },
+            _ => {
+                let message = error.to_message();
+                let status = error.into_response().status();
+                Self {
+                    name: "Error".into(),
+                    message,
+                    status_code: status.as_u16(),
+                    status_message: status.canonical_reason().unwrap_or_default().to_string(),
+                }
+            }
+        }
+    }
+}

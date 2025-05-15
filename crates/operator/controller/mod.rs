@@ -1,19 +1,12 @@
-use crate::{get_kube_client, Result};
-use attach::MCPServerTransportStdio;
+use crate::{get_kube_client, MCPServerTransportStdio, Result};
 use kube::Client;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use structopt::StructOpt;
 use tokio::sync::RwLock;
-use tracing_subscriber::fmt::format::FmtSpan;
 
-mod attach;
-mod getter;
 mod manager;
 mod operator;
-mod service;
 mod status;
-
-pub use attach::MCPEvent;
 
 /// The name of the Kubernetes operator manager. Used to identify the operator in the Kubernetes API.
 pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.unmcp.dev/operator";
@@ -42,7 +35,7 @@ pub struct ControllerOptions {
 pub struct Controller {
     client: Client,
     namespace: String,
-    channels: Arc<RwLock<HashMap<String, Arc<RwLock<MCPServerTransportStdio>>>>>,
+    transports: Arc<RwLock<HashMap<String, Arc<RwLock<MCPServerTransportStdio>>>>>,
 }
 
 impl Controller {
@@ -51,32 +44,8 @@ impl Controller {
         Ok(Self {
             namespace: options.namespace.clone(),
             client: get_kube_client(options.kubeconfig.clone()).await?,
-            channels: Arc::new(RwLock::new(HashMap::new())),
+            transports: Arc::new(RwLock::new(HashMap::new())),
         })
-    }
-
-    /// Start the tracing subscriber for logging.
-    pub fn start_tracing(&self) {
-        let format = tracing_subscriber::fmt::format()
-            .with_level(true)
-            .with_target(false)
-            .without_time()
-            .with_file(true)
-            .with_line_number(true)
-            .compact();
-
-        // Create a filter that excludes reconciler retry messages
-        let fmt_fields = tracing_subscriber::fmt::format::debug_fn(|writer, _, value| {
-            write!(writer, "\n\t{value:?}")
-        });
-
-        tracing_subscriber::fmt()
-            .with_line_number(true)
-            .with_span_events(FmtSpan::NONE)
-            .with_level(true)
-            .fmt_fields(fmt_fields)
-            .event_format(format)
-            .init();
     }
 
     /// Get the Kubernetes client.

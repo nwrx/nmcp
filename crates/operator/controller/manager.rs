@@ -1,6 +1,7 @@
 use super::{Controller, MCP_SERVER_OPERATOR_MANAGER};
-use crate::{Error, MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec, Result};
-use kube::api::{Api, DeleteParams, Patch, PatchParams, PostParams};
+use crate::utils::{Error, Result};
+use crate::{MCPPool, MCPPoolList, MCPPoolSpec, MCPServer, MCPServerList, MCPServerSpec};
+use kube::api::{Api, DeleteParams, ListParams, Patch, PatchParams, PostParams};
 use serde_json::json;
 
 impl Controller {
@@ -15,7 +16,7 @@ impl Controller {
                 &MCPPool::new(name, spec),
             )
             .await
-            .map_err(Error::PoolCreateError)
+            .map_err(Error::from)
     }
 
     /// Create a new `MCPServer` resource in Kubernetes.
@@ -29,7 +30,7 @@ impl Controller {
                 &MCPServer::new(name, spec),
             )
             .await
-            .map_err(Error::ServerCreateFailed)
+            .map_err(Error::from)
     }
 
     /// Update an existing `MCPPool` resource in Kubernetes.
@@ -47,7 +48,7 @@ impl Controller {
                 &Patch::Apply(&patch),
             )
             .await
-            .map_err(Error::PoolUpdateError)
+            .map_err(Error::from)
     }
 
     /// Update an existing `MCPServer` resource in Kubernetes.
@@ -65,7 +66,7 @@ impl Controller {
                 &Patch::Apply(&patch),
             )
             .await
-            .map_err(Error::ServerUpdateFailed)
+            .map_err(Error::from)
     }
 
     /// Delete an existing `MCPServer` resource from Kubernetes.
@@ -75,13 +76,13 @@ impl Controller {
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => {
-                if let kube::Error::Api(err) = &e {
-                    if err.code == 404 {
+            Err(error) => {
+                if let kube::Error::Api(response) = &error {
+                    if response.code == 404 {
                         return Ok(());
                     }
                 }
-                Err(Error::ServerDeleteFailed(e))
+                Err(error.into())
             }
         }
     }
@@ -93,15 +94,49 @@ impl Controller {
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => {
-                if let kube::Error::Api(err) = &e {
-                    if err.code == 404 {
+            Err(error) => {
+                if let kube::Error::Api(response) = &error {
+                    if response.code == 404 {
                         return Ok(());
                     }
                 }
-                Err(Error::PoolDeleteError(e))
+                Err(error.into())
             }
         }
+    }
+
+    /// Lists all MCPPool objects in the current Kubernetes namespace.
+    pub async fn search_pools(&self) -> Result<MCPPoolList> {
+        let pools = Api::<MCPPool>::namespaced(self.get_client(), &self.get_namespace())
+            .list(&ListParams::default())
+            .await?
+            .into();
+        Ok(pools)
+    }
+
+    /// Lists all MCPServer objects in the current Kubernetes namespace.
+    pub async fn search_servers(&self) -> Result<MCPServerList> {
+        let servers = Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
+            .list(&ListParams::default())
+            .await?
+            .into();
+        Ok(servers)
+    }
+
+    /// Gets a specific MCPPool by name.
+    pub async fn get_pool_by_name(&self, name: &str) -> Result<MCPPool> {
+        Api::namespaced(self.get_client(), &self.get_namespace())
+            .get(name)
+            .await
+            .map_err(Error::from)
+    }
+
+    /// Gets a specific MCPServer by its UID.
+    pub async fn get_server_by_name(&self, name: &str) -> Result<MCPServer> {
+        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
+            .get_status(name)
+            .await
+            .map_err(Error::from)
     }
 }
 
@@ -197,8 +232,6 @@ mod tests {
             .await
             .unwrap();
     }
-
-    ///////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////
 
@@ -362,6 +395,136 @@ mod tests {
                 .get("test-pool")
                 .await;
                 assert!(pool_fetched.is_err());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+
+    /// Should return an empty list of servers when no servers are present.
+    #[tokio::test]
+    async fn test_list_servers_empty() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let servers = controller.search_servers().await.unwrap();
+                assert!(servers.0.items.is_empty());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should return an empty list of pools when no pools are present.
+    #[tokio::test]
+    async fn test_list_pools_empty() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let pools = controller.search_pools().await.unwrap();
+                assert!(pools.0.items.is_empty());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should return a list of pools when pools are present.
+    #[tokio::test]
+    async fn test_list_pools_with_data() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let pool1 = controller.create_pool("p1", Default::default()).await?;
+                let pool2 = controller.create_pool("p2", Default::default()).await?;
+                let pools = controller.search_pools().await.unwrap();
+                assert_eq!(pools.0.items.len(), 2);
+                assert_eq!(pools.0.items[0].name_any(), pool1.name_any());
+                assert_eq!(pools.0.items[1].name_any(), pool2.name_any());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should return a list of servers when servers are present.
+    #[tokio::test]
+    async fn test_list_servers_with_data() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let server1 = controller.create_server("s1", Default::default()).await?;
+                let server2 = controller.create_server("s2", Default::default()).await?;
+                let servers = controller.search_servers().await.unwrap();
+                assert_eq!(servers.0.items.len(), 2);
+                assert_eq!(servers.0.items[0].name_any(), server1.name_any());
+                assert_eq!(servers.0.items[1].name_any(), server2.name_any());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+
+    /// Should return a pool when it exists.
+    #[tokio::test]
+    async fn test_get_pool() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let pool_created = controller.create_pool("p1", Default::default()).await?;
+                let pool_fetched = controller.get_pool_by_name("p1").await?;
+                assert_eq!(pool_fetched.name_any(), pool_created.name_any());
+                assert_eq!(pool_fetched.spec, pool_created.spec);
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should reject with `Error::PoolGetError` when the pool does not exist.
+    #[tokio::test]
+    async fn test_get_pool_not_found() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let result = controller.get_pool_by_name("nonexistent").await;
+                assert!(result.is_err());
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    ///////////////////////////////////////////////////////////////////////
+
+    /// Should return a server when it exists.
+    #[tokio::test]
+    async fn test_get_server() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let server_created = controller.create_server("s1", Default::default()).await?;
+                let server_fetched = controller.get_server_by_name("s1").await?;
+                assert_eq!(server_fetched.name_any(), server_created.name_any());
+                assert_eq!(server_fetched.spec, server_created.spec);
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Should reject with `Error::ServerNotFound` when the server does not exist.
+    #[tokio::test]
+    async fn test_get_server_not_found() {
+        TestContext::new()
+            .await
+            .run(|controller| async move {
+                let result = controller.get_server_by_name("nonexistent").await;
+                assert!(result.is_err());
                 Ok(())
             })
             .await

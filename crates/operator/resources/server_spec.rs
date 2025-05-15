@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "camelCase")]
 pub struct MCPServerSpec {
-    /// Reference to McpPool resource this server belongs to. This will be used to
+    /// Name of the `MCPPool` this server belongs to. This will be used to
     /// determine in which pool the server is running, thus allowing the controller to
     /// manage the server's lifecycle based on the pool's specifications.
     #[serde(default = "default_pool")]
@@ -47,9 +47,18 @@ pub struct MCPServerSpec {
     #[serde(default = "default_env")]
     pub env: Vec<v1::EnvVar>,
 
-    /// The MCP transport used by the server. This will be used to determine how the server
-    /// communicates with other components in the system, such as the database or other servers.
-    /// Can either be "sse" (HTTP) or "stdio" (STDIN/STDOUT).
+    /// The type of transport used by the server internally. This will be used to determine how
+    /// the server communicates with the container and allow us to interact with it through. This
+    /// field does not affect the server's external communication, which is only done through
+    /// HTTP/SSE protocols.
+    ///
+    /// The transport type can be either `stdio` or `sse`. The `stdio` transport type is used for
+    /// standard input/output communication, while the `sse` transport type is used for server-sent
+    /// events. The `sse` transport type requires a port to be specified.
+    ///
+    /// If you're unsure which transport type to use, check the documentation for the image you're
+    /// using. Most images will support both transport types, but some may have specific requirements
+    /// or limitations.
     #[serde(default)]
     pub transport: MCPServerTransport,
 
@@ -58,20 +67,6 @@ pub struct MCPServerSpec {
     /// shutting down idle servers.
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout: u32,
-}
-
-impl Default for MCPServerSpec {
-    fn default() -> Self {
-        Self {
-            pool: default_pool(),
-            image: default_image(),
-            command: default_command(),
-            args: None,
-            env: default_env(),
-            transport: MCPServerTransport::default(),
-            idle_timeout: default_idle_timeout(),
-        }
-    }
 }
 
 /// Default pool name
@@ -99,6 +94,19 @@ fn default_idle_timeout() -> u32 {
     60 // 1 minutes
 }
 
+impl Default for MCPServerSpec {
+    fn default() -> Self {
+        Self {
+            pool: default_pool(),
+            image: default_image(),
+            command: default_command(),
+            args: None,
+            env: default_env(),
+            transport: MCPServerTransport::default(),
+            idle_timeout: default_idle_timeout(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,10 +14,10 @@ pub async fn get_kube_client(kubeconfig: Option<PathBuf>) -> Result<Client, Erro
         }
 
         // --- If no kubeconfig path is provided, use the in-cluster config.
-        None => Config::incluster().map_err(Error::InClusterError)?,
+        None => Config::incluster().map_err(Error::from)?,
     };
 
     // --- Create a kube client from the kubeconfig.
-    let client = Client::try_from(kubeconfig).map_err(Error::KubeClientError)?;
+    let client = Client::try_from(kubeconfig).map_err(Error::from)?;
     Ok(client)
 }

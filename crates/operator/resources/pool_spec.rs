@@ -25,6 +25,8 @@ pub struct MCPPoolSpec {
     /// this limit is reached, the overflow servers will be marked as "ignored" and no Pod
     /// or Service resources will be created for them until older MCPServer resources are
     /// deleted.
+    ///
+    /// TODO: Deprecated in favor of `maxActiveServers`.
     #[serde(default = "default_max_servers")]
     pub max_servers_limit: u32,
 

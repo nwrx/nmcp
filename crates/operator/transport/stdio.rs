@@ -1,13 +1,9 @@
-use super::Controller;
-use crate::{Error, MCPServer, Result};
-use axum::response::sse::Event;
-use futures::StreamExt;
-use k8s_openapi::api::core::v1::Pod;
-use kube::api::{Api, AttachParams, AttachedProcess};
-use kube::ResourceExt;
+use super::MCPEvent;
+use crate::{Error, MCPServer, Result, DEFAULT_POD_BUFFER_SIZE, DEFAULT_SSE_CHANNEL_CAPACITY};
+use kube::api::AttachedProcess;
 use rmcp::model::{
-    ErrorCode, ErrorData, JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
-    JsonRpcResponse, JsonRpcVersion2_0, Notification, NumberOrString,
+    ErrorCode, ErrorData, JsonRpcError, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse,
+    JsonRpcVersion2_0, NumberOrString,
 };
 use serde_json as JSON;
 use std::sync::Arc;
@@ -18,37 +14,6 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
-
-// Configuration constants
-const DEFAULT_SSE_CHANNEL_CAPACITY: usize = 100;
-const DEFAULT_POD_BUFFER_SIZE: usize = 1024 * 256; //  256 KiB
-
-///////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug)]
-pub enum MCPEvent {
-    Endpoint(String),
-    Message(JsonRpcMessage),
-    Error(String),
-}
-
-impl From<JsonRpcMessage> for MCPEvent {
-    fn from(message: JsonRpcMessage) -> Self {
-        MCPEvent::Message(message)
-    }
-}
-
-impl From<MCPEvent> for Event {
-    fn from(event: MCPEvent) -> Self {
-        match event {
-            MCPEvent::Endpoint(endpoint) => Event::default().event("endpoint").data(endpoint),
-            MCPEvent::Error(error) => Event::default().event("error").data(error),
-            MCPEvent::Message(message) => Event::default()
-                .event("message")
-                .data(JSON::to_string(&message).unwrap()),
-        }
-    }
-}
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -70,6 +35,7 @@ impl From<Error> for JsonRpcMessage {
 
 pub struct MCPServerTransportStdio {
     pub process: Arc<RwLock<AttachedProcess>>,
+    pub server: MCPServer,
     is_listening: Arc<RwLock<bool>>,
     stdin_rx: Arc<RwLock<Receiver<JsonRpcRequest>>>,
     stdin_tx: Arc<RwLock<Sender<JsonRpcRequest>>>,
@@ -81,6 +47,25 @@ pub struct MCPServerTransportStdio {
 }
 
 impl MCPServerTransportStdio {
+    /// Create a new transport for the MCP server.
+    pub fn new(process: AttachedProcess, server: MCPServer) -> Self {
+        // --- Create a new channel for stdin and stdout.
+        let (stdin_tx, stdin_rx) = channel(DEFAULT_SSE_CHANNEL_CAPACITY);
+        let (stdout_tx, stdout_rx) = channel(DEFAULT_SSE_CHANNEL_CAPACITY);
+
+        // --- Create a new transport for the MCP server.
+        Self {
+            server,
+            process: Arc::new(RwLock::new(process)),
+            is_listening: Arc::new(RwLock::new(false)),
+            stdin_rx: Arc::new(RwLock::new(stdin_rx)),
+            stdin_tx: Arc::new(RwLock::new(stdin_tx)),
+            stdout_tx: Arc::new(RwLock::new(stdout_tx)),
+            stdout_rx: Arc::new(RwLock::new(stdout_rx)),
+            initialize_response: Arc::new(RwLock::new(None)),
+        }
+    }
+
     /// Listen for messages from the process stdout and send them to the receiver.
     pub async fn listen(&self) -> Result<()> {
         // --- If already listening, return early.
@@ -98,7 +83,6 @@ impl MCPServerTransportStdio {
         // --- Read from the stdin channel and write to the process stdin.
         tokio::spawn(async move {
             loop {
-                info!("[LISTEN/STDIN] Reading from stdin channel");
                 match stdin_rx.write().await.recv().await {
                     Ok(message) => {
                         let message = JSON::to_string(&message).unwrap();
@@ -131,7 +115,8 @@ impl MCPServerTransportStdio {
                     }
                     Ok(size) => {
                         // --- Process the buffer line by line
-                        let data = String::from_utf8_lossy(&buffer[..size]).to_string();
+                        let data = &buffer[..size];
+                        let data = String::from_utf8_lossy(data).to_string();
                         for line in data.lines() {
                             if line.trim().is_empty() {
                                 continue;
@@ -145,9 +130,9 @@ impl MCPServerTransportStdio {
 
                             // --- Broadcast the message to the SSE stream
                             if let JsonRpcMessage::Response(response) = &message {
-                                let utf8 = JSON::to_string(&response).unwrap();
+                                let id = response.id.clone();
                                 match stdout_tx.write().await.send(message.into()) {
-                                    Ok(_) => info!("[LISTEN/STDOUT]: {}", utf8),
+                                    Ok(_) => info!("[LISTEN/STDOUT]: {}", id),
                                     Err(e) => {
                                         error!("Failed to send event to SSE stream: {}", e);
                                         break;
@@ -178,12 +163,12 @@ impl MCPServerTransportStdio {
         let mut stdout_rx = self.stdout_rx.write().await;
 
         // --- If the request is an initialize request, check if we have a cached response.
-        // if request.request.method == "initialize" {
-        //     let initialize_response = self.initialize_response.read().await;
-        //     if let Some(response) = &*initialize_response {
-        //         return Ok(response.clone());
-        //     }
-        // }
+        if request.request.method == "initialize" {
+            let initialize_response = self.initialize_response.read().await;
+            if let Some(response) = &*initialize_response {
+                return Ok(response.clone());
+            }
+        }
 
         // --- First, send the message to the stdin channel.
         match stdin_tx.send(request.clone()) {
@@ -218,7 +203,7 @@ impl MCPServerTransportStdio {
                             if response.id == request.id {
                                 info!(
                                     "[MESSAGE/RESPONSE]: {}",
-                                    JSON::to_string(&response).unwrap()
+                                    JSON::to_string(&response.id).unwrap()
                                 );
                                 return Ok(response);
                             }
@@ -236,8 +221,8 @@ impl MCPServerTransportStdio {
             }
         };
 
-        // Apply the timeout
-        let duration = Duration::from_secs(10);
+        // --- Timeout the future after 1 second.
+        let duration = Duration::from_secs(1);
         match timeout(duration, future).await {
             Ok(result) => result,
             Err(_) => Err(Error::Internal(format!(
@@ -255,71 +240,11 @@ impl MCPServerTransportStdio {
         // --- Write the endpoint to the SSE stream.
         let event = MCPEvent::Endpoint(endpoint.to_owned());
         match tx.send(event) {
-            Ok(_) => debug!("Sending endpoint to SSE stream: {}", endpoint),
-            Err(e) => {
-                error!("Failed to send endpoint to SSE stream: {}", e);
-            }
+            Ok(_) => debug!("Sending endpoint to SSE stream: {endpoint}"),
+            Err(error) => error!("Failed to send endpoint to SSE stream: {error}"),
         }
 
         // --- When the stream is closed, send an error event.
         BroadcastStream::new(rx)
-    }
-}
-
-impl From<AttachedProcess> for MCPServerTransportStdio {
-    fn from(process: AttachedProcess) -> Self {
-        let (stdin_tx, stdin_rx) = channel::<JsonRpcRequest>(DEFAULT_SSE_CHANNEL_CAPACITY);
-        let (stdout_tx, stdout_rx) = channel::<MCPEvent>(DEFAULT_SSE_CHANNEL_CAPACITY);
-        MCPServerTransportStdio {
-            initialize_response: Arc::new(RwLock::new(None)),
-            is_listening: Arc::new(RwLock::new(false)),
-            process: Arc::new(RwLock::new(process)),
-            stdin_tx: Arc::new(RwLock::new(stdin_tx)),
-            stdin_rx: Arc::new(RwLock::new(stdin_rx)),
-            stdout_tx: Arc::new(RwLock::new(stdout_tx)),
-            stdout_rx: Arc::new(RwLock::new(stdout_rx)),
-        }
-    }
-}
-
-impl Controller {
-    /// Ensures that a pod's TTY is attached and returns true if successful
-    pub async fn get_server_tty(&self, server: &MCPServer) -> Result<AttachedProcess> {
-        Api::<Pod>::namespaced(self.get_client(), &self.get_namespace())
-            .attach(
-                &server.name_pod(),
-                &AttachParams::interactive_tty()
-                    .container("server")
-                    .max_stdout_buf_size(DEFAULT_POD_BUFFER_SIZE)
-                    .max_stdin_buf_size(DEFAULT_POD_BUFFER_SIZE),
-            )
-            .await
-            .map_err(Error::KubeError)
-    }
-
-    /// Attaches to a pod's TTY and returns a stream of events for SSE.
-    pub async fn get_server_sse(
-        &self,
-        server: &MCPServer,
-    ) -> Result<Arc<RwLock<MCPServerTransportStdio>>> {
-        let server_name = server.name_any();
-        {
-            let channels = self.channels.read().await;
-            if let Some(existing_channels) = channels.get(&server_name) {
-                return Ok(existing_channels.clone());
-            }
-        }
-
-        // Create a new channel if none exists
-        let process = self.get_server_tty(server).await?;
-        let channels = Arc::new(RwLock::new(process.into()));
-
-        // Store the channel in the hashmap
-        {
-            let mut channels_map = self.channels.write().await;
-            channels_map.insert(server_name, channels.clone());
-        }
-
-        Ok(channels)
     }
 }
