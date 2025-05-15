@@ -23,7 +23,9 @@ pub struct MCPPoolBody {
     #[serde(flatten)]
     pub spec: MCPPoolSpec,
 
-    #[serde(flatten)]
+    /// Status of the `MCPPool`. This provides information about the current state of the
+    /// pool, including the number of active, pending, unmanaged, and managed servers,
+    /// as well as the total number of servers in the pool.
     pub status: MCPPoolStatus,
 }
 

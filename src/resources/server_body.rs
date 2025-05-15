@@ -19,7 +19,7 @@ pub struct MCPServerBody {
     #[serde(flatten)]
     pub spec: MCPServerSpec,
 
-    #[serde(flatten)]
+    /// Status of the server
     pub status: MCPServerStatus,
 }
 
