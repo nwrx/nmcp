@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use kube::{Client, Config};
-use serde_yaml::from_str;
+use serde_yml::from_str;
 use std::{fs::read_to_string, path::PathBuf};
 
 pub async fn get_kube_client(kubeconfig: Option<PathBuf>) -> Result<Client, Error> {

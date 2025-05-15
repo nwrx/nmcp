@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use serde_json as JSON;
-use serde_yaml as YAML;
+use serde_yml as YAML;
 
 /// Serialize a CRD object to JSON or YAML based on the output format
 pub fn serialize<T: serde::Serialize>(crd: &T, output_format: &str) -> Result<String> {

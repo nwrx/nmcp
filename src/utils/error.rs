@@ -59,9 +59,9 @@ pub enum Error {
     #[status(StatusCode::INTERNAL_SERVER_ERROR)]
     DeserializeJsonError(#[source] serde_json::Error),
 
-    #[error("Could not serialize the object into serde_yaml: {0}")]
+    #[error("Could not serialize the object into serde_yml: {0}")]
     #[status(StatusCode::INTERNAL_SERVER_ERROR)]
-    SerializeYamlError(#[source] serde_yaml::Error),
+    SerializeYamlError(#[source] serde_yml::Error),
 
     #[error("Unsupported output format: {0}")]
     #[status(StatusCode::BAD_REQUEST)]
@@ -81,7 +81,7 @@ pub enum Error {
 
     #[error("Error while parsing kubeconfig: {0}")]
     #[status(StatusCode::INTERNAL_SERVER_ERROR)]
-    KubeConfigParseError(#[source] serde_yaml::Error),
+    KubeConfigParseError(#[source] serde_yml::Error),
 }
 
 impl Error {
