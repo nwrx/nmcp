@@ -17,7 +17,7 @@ mod sse;
 
 /// Configuration for the API server
 #[derive(Debug, Clone, StructOpt)]
-pub struct ApplicationOptions {
+pub struct GatewayOptions {
     /// Host address for the API server to bind to
     #[structopt(long, default_value = "127.0.0.1")]
     pub host: IpAddr,
@@ -29,12 +29,12 @@ pub struct ApplicationOptions {
 
 /// Server struct for the API server
 #[derive(Clone)]
-pub struct Application {
+pub struct Gateway {
     address: SocketAddr,
     controller: Arc<RwLock<Controller>>,
 }
 
-pub type ApplicationContext = Arc<Application>;
+pub type GatewayContext = Arc<Gateway>;
 
 // Note that this clones the document on each request.
 // To be more efficient, we could wrap it into an Arc,
@@ -59,9 +59,9 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         })
 }
 
-impl Application {
+impl Gateway {
     /// Create a new server instance
-    pub async fn new(options: ApplicationOptions, controller: Controller) -> Result<Self> {
+    pub async fn new(options: GatewayOptions, controller: Controller) -> Result<Self> {
         Ok(Self {
             address: SocketAddr::new(options.host, options.port),
             controller: Arc::new(RwLock::new(controller)),

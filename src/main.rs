@@ -7,8 +7,8 @@ use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use unmcp::{
-    serialize, Application, ApplicationOptions, Controller, ControllerOptions, Error, MCPPool,
-    MCPServer, Result,
+    serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, MCPPool, MCPServer,
+    Result,
 };
 
 /// Command-line options for unmcp
@@ -24,13 +24,13 @@ pub enum Command {
     Operator(ControllerOptions),
 
     /// Run only the API server without the operator
-    #[structopt(name = "server")]
-    Server {
+    #[structopt(name = "gateway")]
+    Gateway {
         #[structopt(flatten)]
         controller_options: ControllerOptions,
 
         #[structopt(flatten)]
-        server_options: ApplicationOptions,
+        gateway_options: GatewayOptions,
     },
 
     /// Export CRD or schema definitions
@@ -79,12 +79,12 @@ async fn main() -> Result<()> {
         }
 
         // Start the API server.
-        Command::Server {
+        Command::Gateway {
             controller_options,
-            server_options,
+            gateway_options,
         } => {
             let controller = Controller::new(&controller_options).await?;
-            let server = Application::new(server_options, controller).await?;
+            let server = Gateway::new(gateway_options, controller).await?;
             let _ = server.start().await;
         }
 

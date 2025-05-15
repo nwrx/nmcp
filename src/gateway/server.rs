@@ -1,4 +1,4 @@
-use super::{sse, ApplicationContext};
+use super::{sse, GatewayContext};
 use crate::{MCPServerBody, MCPServerSpec};
 use aide::axum::routing::{get_with, post_with};
 use aide::axum::{ApiRouter, IntoApiResponse};
@@ -18,7 +18,7 @@ struct SearchQuery {
 
 /// Handler for GET /api/v1/servers
 async fn search(
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
     // Query(query): Query<SearchQuery>,
 ) -> impl IntoApiResponse {
     ctx.controller()
@@ -44,10 +44,7 @@ fn search_docs(op: TransformOperation) -> TransformOperation {
 ///////////////////////////////////////////////////////////////////////////////
 
 /// Handler for GET /api/v1/servers/{name}
-async fn get(
-    Path(name): Path<String>,
-    State(ctx): State<ApplicationContext>,
-) -> impl IntoApiResponse {
+async fn get(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> impl IntoApiResponse {
     ctx.controller()
         .await
         .get_server_by_name(&name)
@@ -84,7 +81,7 @@ pub struct CreateBody {
 
 /// Handler for POST /api/v1/servers
 async fn create(
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
     Json(body): Json<CreateBody>,
 ) -> impl IntoApiResponse {
     ctx.controller()
@@ -111,7 +108,7 @@ fn create_docs(op: TransformOperation) -> TransformOperation {
 
 /// Handler for DELETE /api/v1/servers/{name}
 async fn delete(
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
     Path(name): Path<String>,
 ) -> impl IntoApiResponse {
     ctx.controller()
@@ -138,7 +135,7 @@ fn delete_docs(op: TransformOperation) -> TransformOperation {
 
 /// Handler for PATCH /api/v1/servers/{name}
 async fn patch(
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
     Path(name): Path<String>,
     Json(spec): Json<MCPServerSpec>,
 ) -> impl IntoApiResponse {
@@ -164,7 +161,7 @@ fn patch_docs(op: TransformOperation) -> TransformOperation {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-pub fn routes(ctx: ApplicationContext) -> ApiRouter {
+pub fn routes(ctx: GatewayContext) -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/",

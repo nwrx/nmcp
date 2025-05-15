@@ -1,4 +1,4 @@
-use super::ApplicationContext;
+use super::GatewayContext;
 use aide::axum::IntoApiResponse;
 use aide::transform::TransformOperation;
 use axum::extract::{Path, State};
@@ -11,7 +11,7 @@ use tokio_stream::StreamExt;
 /// Handler for GET /api/v1/servers/{name}/sse
 pub async fn stream(
     Path(name): Path<String>,
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
 ) -> impl IntoApiResponse {
     let controller = ctx.controller().await;
     tracing::debug!("Received request: {:?}", name);
@@ -78,7 +78,7 @@ pub fn stream_docs(op: TransformOperation) -> TransformOperation {
 
 /// Handler for POST /api/v1/servers/{name}/message
 pub async fn message(
-    State(ctx): State<ApplicationContext>,
+    State(ctx): State<GatewayContext>,
     Path(name): Path<String>,
     Json(request): Json<JsonRpcRequest>,
 ) -> impl IntoApiResponse {

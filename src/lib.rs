@@ -1,11 +1,11 @@
-pub mod application;
 pub mod controller;
+pub mod gateway;
 pub mod resources;
 pub mod transport;
 pub mod utils;
 
-pub use application::*;
 pub use controller::*;
+pub use gateway::*;
 pub use resources::*;
 pub use transport::*;
 pub use utils::*;
