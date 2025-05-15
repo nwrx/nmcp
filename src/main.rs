@@ -1,4 +1,8 @@
 use kube::CustomResourceExt;
+use nmcp::{
+    serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, MCPPool, MCPServer,
+    Result,
+};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::fs::File;
@@ -6,17 +10,13 @@ use tokio::io::{stdout, AsyncWriteExt};
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use unmcp::{
-    serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, MCPPool, MCPServer,
-    Result,
-};
 
-/// Command-line options for unmcp
+/// Command-line options for nmcp
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(
-    name = "unmcp",
+    name = "nmcp",
     about = "Kubernetes operator for managing MCP servers",
-    after_help = "For more information, visit https://github.com/shorwood/unmcp"
+    after_help = "For more information, visit https://github.com/shorwood/nmcp"
 )]
 pub enum Command {
     /// Run the Kubernetes operator for managing MCP servers
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
                 .with_line_number(true),
         )
         .with(filter_fn(|metadata| {
-            metadata.module_path().unwrap_or_default().contains("unmcp")
+            metadata.module_path().unwrap_or_default().contains("nmcp")
         }))
         .init();
 

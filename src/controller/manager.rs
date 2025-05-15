@@ -36,7 +36,7 @@ impl Controller {
     /// Update an existing `MCPPool` resource in Kubernetes.
     pub async fn patch_pool_spec(&self, name: &str, spec: &MCPPoolSpec) -> Result<MCPPool> {
         let patch = json!({
-            "apiVersion": "unmcp.dev/v1",
+            "apiVersion": "nmcp.nwrx.io/v1",
             "kind": "MCPPool",
             "spec": spec
         });
@@ -54,7 +54,7 @@ impl Controller {
     /// Update an existing `MCPServer` resource in Kubernetes.
     pub async fn patch_server_spec(&self, name: &str, spec: &MCPServerSpec) -> Result<MCPServer> {
         let patch = json!({
-            "apiVersion": "unmcp.dev/v1",
+            "apiVersion": "nmcp.nwrx.io/v1",
             "kind": "MCPServer",
             "spec": spec
         });

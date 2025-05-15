@@ -9,11 +9,11 @@ mod operator;
 mod status;
 
 /// The name of the Kubernetes operator manager. Used to identify the operator in the Kubernetes API.
-pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.unmcp.dev/operator";
+pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.nmcp.nwrx.io/operator";
 
 /// The finalizer name for MCPServer resources. This is used to ensure that the operator cleans up
 /// resources before deleting the MCPServer and it's associated resources.
-pub const MCP_SERVER_FINALIZER: &str = "mcpserver.unmcp.dev/finalizer";
+pub const MCP_SERVER_FINALIZER: &str = "mcpserver.nmcp.nwrx.io/finalizer";
 
 /// Configuration for the Kubernetes operator
 #[derive(Debug, Clone, StructOpt, Default)]

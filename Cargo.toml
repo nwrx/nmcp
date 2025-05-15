@@ -1,5 +1,5 @@
 [package]
-name = "unmcp"
+name = "nmcp"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -66,9 +66,5 @@ features = [
 ]
 
 [[bin]]
-name = "unmcp"
+name = "ncmp"
 path = "src/main.rs"
-
-[lib]
-name = "unmcp"
-path = "src/lib.rs"

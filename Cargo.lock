@@ -1612,6 +1612,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmcp"
+version = "0.1.0"
+dependencies = [
+ "aide",
+ "anyhow",
+ "async-trait",
+ "axum 0.8.4",
+ "axum_thiserror",
+ "chrono",
+ "futures",
+ "k8s-openapi",
+ "kube",
+ "rand",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "structopt",
+ "testcontainers",
+ "testcontainers-modules",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-stream",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2913,37 +2944,6 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
-
-[[package]]
-name = "unmcp"
-version = "0.1.0"
-dependencies = [
- "aide",
- "anyhow",
- "async-trait",
- "axum 0.8.4",
- "axum_thiserror",
- "chrono",
- "futures",
- "k8s-openapi",
- "kube",
- "rand",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml",
- "structopt",
- "testcontainers",
- "testcontainers-modules",
- "thiserror 2.0.12",
- "tokio",
- "tokio-stream",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
 
 [[package]]
 name = "unsafe-libyaml"

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// McpPool custom resource definition
 #[derive(CustomResource, Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[kube(
-    group = "unmcp.dev",
+    group = "nmcp.nwrx.io",
     version = "v1",
     kind = "MCPPool",
     singular = "mcppool",
@@ -84,7 +84,7 @@ mod tests {
         assert_eq!(crd.spec.names.kind, "MCPPool");
         assert_eq!(crd.spec.names.plural, "mcppools");
         assert_eq!(crd.spec.names.singular, Some("mcppool".to_string()));
-        assert_eq!(crd.spec.group, "unmcp.dev");
+        assert_eq!(crd.spec.group, "nmcp.nwrx.io");
         assert_eq!(crd.spec.versions[0].name, "v1");
     }
 
@@ -102,7 +102,7 @@ mod tests {
     fn test_mcp_pool_json_deserialization() {
         let json = r#"
         {
-            "apiVersion": "unmcp.dev/v1",
+            "apiVersion": "nmcp.nwrx.io/v1",
             "kind": "MCPPool",
             "metadata": {
                 "name": "test-pool",

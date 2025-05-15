@@ -7,8 +7,8 @@ impl MCPPool {
     pub fn labels(&self) -> BTreeMap<String, String> {
         let uid = self.metadata.uid.clone().unwrap_or_default();
         let mut labels = BTreeMap::new();
-        labels.insert("unmcp.dev/pool".to_string(), self.name_any());
-        labels.insert("unmcp.dev/uid".to_string(), uid);
+        labels.insert("nmcp.nwrx.io/pool".to_string(), self.name_any());
+        labels.insert("nmcp.nwrx.io/uid".to_string(), uid);
         labels
     }
 }
@@ -28,8 +28,8 @@ mod tests {
     fn test_mcp_pool_labels() {
         let pool = MCPPool::new("test-pool", Default::default());
         let labels = pool.labels();
-        let label_pool = labels.get("unmcp.dev/pool").unwrap();
-        let label_uid = labels.get("unmcp.dev/uid").unwrap();
+        let label_pool = labels.get("nmcp.nwrx.io/pool").unwrap();
+        let label_uid = labels.get("nmcp.nwrx.io/uid").unwrap();
         assert_eq!(labels.len(), 2);
         assert_eq!(label_pool, "test-pool");
         assert_eq!(label_uid, pool.metadata.uid.as_ref().unwrap());

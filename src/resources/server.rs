@@ -28,8 +28,8 @@ impl MCPServer {
         let uid = self.metadata.uid.clone().unwrap_or_default();
         let mut labels = std::collections::BTreeMap::new();
         labels.insert("app".to_string(), self.name_pod());
-        labels.insert("unmcp.dev/uid".to_string(), uid);
-        labels.insert("unmcp.dev/pool".to_string(), self.spec.pool.clone());
+        labels.insert("nmcp.nwrx.io/uid".to_string(), uid);
+        labels.insert("nmcp.nwrx.io/pool".to_string(), self.spec.pool.clone());
         labels
     }
 }
@@ -77,8 +77,8 @@ mod tests {
         let server = MCPServer::new("test-server", Default::default());
         let labels = server.labels();
         let label_app = labels.get("app").unwrap();
-        let label_uid = labels.get("unmcp.dev/uid").unwrap();
-        let label_pool = labels.get("unmcp.dev/pool").unwrap();
+        let label_uid = labels.get("nmcp.nwrx.io/uid").unwrap();
+        let label_pool = labels.get("nmcp.nwrx.io/pool").unwrap();
         assert_eq!(labels.len(), 3);
         assert_eq!(label_app, &server.name_pod());
         assert_eq!(label_uid, server.metadata.uid.as_ref().unwrap());

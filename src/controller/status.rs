@@ -115,8 +115,48 @@ impl Controller {
 
     /// Register that an MCPServer resource has been requested.
     pub async fn register_server_request(&self, server: &MCPServer) -> Result<()> {
+        let server = self.get_server_by_name(&server.name_any()).await?;
         let mut status = server.status.clone().unwrap_or_default();
         status.last_request_at = Some(Utc::now());
+        status.total_requests += 1;
+
+        // --- Update the MCPServer resource with the new status
+        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
+            .patch_status(
+                &server.name_any(),
+                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
+                &Patch::Merge(&json!({ "status": status })),
+            )
+            .await
+            .map_err(Error::from)?;
+
+        Ok(())
+    }
+
+    /// Register that an active connection has been established.
+    pub async fn register_server_connection(&self, server: &MCPServer) -> Result<()> {
+        let server = self.get_server_by_name(&server.name_any()).await?;
+        let mut status = server.status.clone().unwrap_or_default();
+        status.current_connections += 1;
+
+        // --- Update the MCPServer resource with the new status
+        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
+            .patch_status(
+                &server.name_any(),
+                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
+                &Patch::Merge(&json!({ "status": status })),
+            )
+            .await
+            .map_err(Error::from)?;
+
+        Ok(())
+    }
+
+    /// Register that an active connection has been closed.
+    pub async fn unregister_server_connection(&self, server: &MCPServer) -> Result<()> {
+        let server = self.get_server_by_name(&server.name_any()).await?;
+        let mut status = server.status.clone().unwrap_or_default();
+        status.current_connections -= 1;
 
         // --- Update the MCPServer resource with the new status
         Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
