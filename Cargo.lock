@@ -2031,7 +2031,7 @@ dependencies = [
 [[package]]
 name = "rmcp"
 version = "0.1.5"
-source = "git+https://github.com/shorwood/rust-sdk.git?branch=shorwood%2Fschemars-json-schema#6a4a87a20010d9c55d5ca1586827ebc12bdc1dba"
+source = "git+https://github.com/modelcontextprotocol/rust-sdk?branch=main#e9a5ae9901441b6269ee8d774debd843b8192405"
 dependencies = [
  "base64 0.21.7",
  "chrono",
@@ -2051,7 +2051,7 @@ dependencies = [
 [[package]]
 name = "rmcp-macros"
 version = "0.1.5"
-source = "git+https://github.com/shorwood/rust-sdk.git?branch=shorwood%2Fschemars-json-schema#6a4a87a20010d9c55d5ca1586827ebc12bdc1dba"
+source = "git+https://github.com/modelcontextprotocol/rust-sdk?branch=main#e9a5ae9901441b6269ee8d774debd843b8192405"
 dependencies = [
  "proc-macro2",
  "quote",

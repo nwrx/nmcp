@@ -41,8 +41,8 @@ testcontainers-modules = { version = "0.12.0", features = ["k3s"] }
 
 # Official MCP protocol implementation for Rust.
 [dependencies.rmcp]
-git = "https://github.com/shorwood/rust-sdk.git"
-branch = "shorwood/schemars-json-schema"
+git = "https://github.com/modelcontextprotocol/rust-sdk"
+branch = "main"
 features = [
   "client",
   "server",
@@ -66,5 +66,5 @@ features = [
 ]
 
 [[bin]]
-name = "ncmp"
+name = "nmcp"
 path = "src/main.rs"

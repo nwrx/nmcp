@@ -2,7 +2,9 @@ use crate::{Controller, Result};
 use aide::axum::routing::get;
 use aide::axum::{ApiRouter, IntoApiResponse};
 use aide::openapi::{OpenApi, Tag};
+use aide::redoc::Redoc;
 use aide::scalar::Scalar;
+use aide::swagger::Swagger;
 use aide::transform::TransformOpenApi;
 use axum::{Extension, Json};
 use std::net::{IpAddr, SocketAddr};
@@ -44,9 +46,11 @@ async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
 }
 
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
-    api.title("UNMCP")
+    let readme = include_str!("../../README.md");
+    let readme = readme.to_string();
+    api.title("NMCP")
         .summary("Kubernetes operator for managing MCP servers")
-        .description("This API provides a way to manage MCP servers and pools.")
+        .description(&readme)
         .tag(Tag {
             name: "Server".to_string(),
             description: Some("Operations related to the `MCPServer` resources.".to_string()),
@@ -83,6 +87,8 @@ impl Gateway {
         let router = ApiRouter::new()
             .route("/openapi.json", get(serve_api))
             .route("/", Scalar::new("/openapi.json").axum_route())
+            .route("/redoc", Redoc::new("/openapi.json").axum_route())
+            .route("/swagger", Swagger::new("/openapi.json").axum_route())
             .nest_api_service("/api/v1/servers", server::routes(ctx.clone()))
             .nest_api_service("/api/v1/pools", pool::routes(ctx.clone()))
             .finish_api_with(&mut api, api_docs)

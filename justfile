@@ -1,4 +1,5 @@
 export KUBECONFIG := `pwd`+"/kube/kubeconfig/kubeconfig.yaml"
+export DOCKER_BUILDKIT := "1"
 
 # Default recipe to display help
 default:
@@ -13,16 +14,16 @@ build:
 
 # Export CRD schemas
 kube-crd-export: build
-    ./target/debug/ncmp export --type crd --resource pool > ./k3s/pool.json
-    ./target/debug/ncmp export --type crd --resource server > ./k3s/server.json
+    ./target/debug/nmcp export --type crd --resource pool > ./k3s/pool.json
+    ./target/debug/nmcp export --type crd --resource server > ./k3s/server.json
 
 kube-crd-uninstall: build
-    ./target/debug/ncmp export --type crd --resource pool | kubectl delete -f - || true
-    ./target/debug/ncmp export --type crd --resource server --format yaml | kubectl delete -f - || true
+    ./target/debug/nmcp export --type crd --resource pool | kubectl delete -f - || true
+    ./target/debug/nmcp export --type crd --resource server --format yaml | kubectl delete -f - || true
 
 kube-crd-install: kube-crd-uninstall
-    ./target/debug/ncmp export --type crd --resource pool --format yaml | kubectl apply -f -
-    ./target/debug/ncmp export --type crd --resource server --format yaml | kubectl apply -f -
+    ./target/debug/nmcp export --type crd --resource pool --format yaml | kubectl apply -f -
+    ./target/debug/nmcp export --type crd --resource server --format yaml | kubectl apply -f -
 
 ##########################################
 
@@ -57,3 +58,36 @@ operator:
 # Start the server
 gateway:
     cargo watch -s 'clear && cargo run -- gateway --port 3000'
+
+##########################################
+
+# Docker image building and pushing
+# Build the static Docker image with musl
+docker-build registry='' tag='latest':
+    docker build -t {{registry}}nmcp:{{tag}} .
+
+# Push the Docker images to a registry
+docker-push registry='' tag='latest':
+    docker push {{registry}}nmcp:{{tag}}
+
+# Build and push in one command
+docker-build-push registry='' tag='latest':
+    just docker-build {{registry}} {{tag}}
+    just docker-push {{registry}} {{tag}}
+
+# Run the NMCP operator in Docker
+docker-run-operator registry='' tag='latest' kubeconfig_path=KUBECONFIG:
+    docker run --rm \
+        --volume {{kubeconfig_path}}:/app/kubeconfig.yaml \
+        {{registry}}nmcp:{{tag}} operator \
+        --kubeconfig /app/kubeconfig.yaml
+
+# Run the NMCP gateway in Docker
+docker-run-gateway registry='' tag='latest' kubeconfig_path=KUBECONFIG port='8080':
+    docker run --rm \
+        --volume {{kubeconfig_path}}:/app/kubeconfig.yaml \
+        -p {{port}}:{{port}} \
+        {{registry}}nmcp:{{tag}} gateway \
+        --kubeconfig /app/kubeconfig.yaml \
+        --port {{port}} \
+        --host 0.0.0.0

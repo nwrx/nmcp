@@ -1,4 +1,4 @@
-# Nano MCP
+# Introduction
 
 `nmcp` is a Rust-based Kubernetes operator that orchestrates Model Context Protocol (MCP) servers in Kubernetes environments. It manages server lifecycles through custom resources, automatically reconciles their state with underlying resources, and provides a **unified HTTP API gateway** for easy interaction with the MCP servers.
 
@@ -17,7 +17,7 @@ spec:
     type: stdio
 ```
 
-## Operator
+# Kubernetes Operator
 
 The operator watches for `MCPServer` and `MCPPool` custom resources in the Kubernetes cluster. When an `MCPServer` resource is in the `Requested` phase, the operator creates a corresponding Pod and Service. The operator also manages the lifecycle of these resources, including termination of idle servers based on configured timeout periods.
 
@@ -46,7 +46,7 @@ context7     Idle        1m
 ```
 ---
 
-## Gateway
+# Gateway API
 
 The gateway is a simple HTTP API server that exposes the MCP servers for management and monitoring. It listens for incoming requests and forwards them to the appropriate MCP server based on the transport method specified in the `MCPServer` resource.
 
@@ -69,7 +69,7 @@ event: endpoint
 data: /api/v1/servers/context7/message
 ```
 
-## Pools
+# Pools management
 
 Servers are grouped into pools, which define limits on the number of servers that can be instantiated concurrently. The operator will not allow the creation of new servers if the pool's limit is reached. The operator also manages the lifecycle of these resources, including termination of idle servers based on configured timeout periods.
 
@@ -124,7 +124,7 @@ The future development of `nmcp` is focused on the following key areas:
 - [ ] **Alerting Integration**: Set up alerting for critical system states and potential issues.
 
 ### Distribution
-- [ ] **Docker Image**: Create a Docker image for the NMCP operator and gateway, allowing for easy deployment in various environments
+- [x] **Docker Image**: Create a Docker image for the NMCP operator and gateway, allowing for easy deployment in various environments
 - [ ] **Helm Chart**: Create a Helm chart for easy deployment and management of the NMCP operator and gateway in Kubernetes environments
 - [ ] **Kustomize Support**: Provide Kustomize overlays for different environments (e.g., dev, staging, production) to simplify deployment configurations
 - [ ] **Terraform Provider**: Develop a Terraform provider for managing MCP servers and pools, enabling infrastructure as code (IaC) capabilities
