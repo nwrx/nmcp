@@ -1,8 +1,6 @@
 use kube::CustomResourceExt;
-use nmcp::{
-    serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, MCPPool, MCPServer,
-    Result,
-};
+use nmcp::{serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, Result};
+use nmcp::{MCPPool, MCPServer};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::fs::File;
