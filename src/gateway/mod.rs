@@ -7,9 +7,9 @@ use aide::scalar::Scalar;
 use aide::swagger::Swagger;
 use aide::transform::TransformOpenApi;
 use axum::{Extension, Json};
+use clap::Parser;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, RwLock};
-use structopt::StructOpt;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
@@ -18,14 +18,14 @@ mod server;
 mod sse;
 
 /// Configuration for the API server
-#[derive(Debug, Clone, StructOpt)]
+#[derive(Debug, Clone, Parser)]
 pub struct GatewayOptions {
     /// Host address for the API server to bind to
-    #[structopt(long, default_value = "127.0.0.1")]
+    #[arg(long, default_value = "127.0.0.1")]
     pub host: IpAddr,
 
     /// Port for the API server to listen on
-    #[structopt(short, long, default_value = "8080")]
+    #[arg(short, long, default_value = "8080")]
     pub port: u16,
 }
 

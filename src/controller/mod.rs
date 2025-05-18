@@ -1,7 +1,7 @@
 use crate::{get_kube_client, Kubeconfig, MCPServerTransportStdio, Result};
+use clap::Parser;
 use kube::Client;
 use std::{collections::HashMap, sync::Arc};
-use structopt::StructOpt;
 use tokio::sync::RwLock;
 
 mod manager;
@@ -16,14 +16,14 @@ pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.nmcp.nwrx.io/operator";
 pub const MCP_SERVER_FINALIZER: &str = "mcpserver.nmcp.nwrx.io/finalizer";
 
 /// Configuration for the Kubernetes operator
-#[derive(Debug, Clone, StructOpt, Default)]
+#[derive(Debug, Clone, Parser, Default)]
 pub struct ControllerOptions {
-    /// Namespace to watch (default: all namespaces)
-    #[structopt(short, long, default_value = "default", env = "KUBECTL_NAMESPACE")]
+    /// Namespace to operate in.
+    #[arg(short, long, default_value = "default")]
     pub namespace: String,
 
-    /// Path to kubeconfig file (uses in-cluster config if not specified)
-    #[structopt(short, long, env = "KUBECONFIG")]
+    /// Path to Kubernetes config file.
+    #[arg(short, long)]
     pub kubeconfig: Kubeconfig,
 }
 

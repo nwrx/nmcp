@@ -1,8 +1,8 @@
+use clap::Parser;
 use kube::CustomResourceExt;
 use nmcp::{serialize, Controller, ControllerOptions, Error, Gateway, GatewayOptions, Result};
 use nmcp::{MCPPool, MCPServer};
 use std::path::PathBuf;
-use structopt::StructOpt;
 use tokio::fs::File;
 use tokio::io::{stdout, AsyncWriteExt};
 use tracing_subscriber::filter::filter_fn;
@@ -10,44 +10,45 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// Command-line options for nmcp
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(
+#[derive(Debug, Clone, Parser)]
+#[command(
     name = "nmcp",
+    version,
     about = "Kubernetes operator for managing MCP servers",
     after_help = "For more information, visit https://github.com/shorwood/nmcp"
 )]
 pub enum Command {
     /// Run the Kubernetes operator for managing MCP servers
-    #[structopt(name = "operator")]
+    #[command(name = "operator")]
     Operator(ControllerOptions),
 
     /// Run only the API server without the operator
-    #[structopt(name = "gateway")]
+    #[command(name = "gateway")]
     Gateway {
-        #[structopt(flatten)]
+        #[command(flatten)]
         controller_options: ControllerOptions,
 
-        #[structopt(flatten)]
+        #[command(flatten)]
         gateway_options: GatewayOptions,
     },
 
     /// Export CRD or schema definitions
-    #[structopt(name = "export")]
+    #[command(name = "export")]
     Export {
         /// Type of resource to export: crd or schema
-        #[structopt(short, long, possible_values = &["crd", "schema"])]
+        #[arg(short, long, value_parser = ["crd", "schema"])]
         r#type: String,
 
         /// Resource to export: pool or server
-        #[structopt(short, long, possible_values = &["pool", "server"])]
+        #[arg(short, long, value_parser = ["pool", "server"])]
         resource: String,
 
         /// Output format: json or yaml
-        #[structopt(short, long, default_value = "yaml", possible_values = &["json", "yaml"])]
+        #[arg(short, long, default_value = "yaml", value_parser = ["json", "yaml"])]
         format: String,
 
         /// Output file (optional, defaults to stdout)
-        #[structopt(short, long)]
+        #[arg(short, long)]
         output: Option<PathBuf>,
     },
 }
@@ -69,7 +70,7 @@ async fn main() -> Result<()> {
         }))
         .init();
 
-    match Command::from_args() {
+    match Command::parse() {
         // Start the operator.
         Command::Operator(options) => {
             let controller = Controller::new(&options).await?;
