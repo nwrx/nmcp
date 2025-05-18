@@ -26,7 +26,8 @@ mod tests {
 
     #[test]
     fn test_mcp_pool_labels() {
-        let pool = MCPPool::new("test-pool", Default::default());
+        let mut pool = MCPPool::new("test-pool", Default::default());
+        pool.metadata.uid = Some(uuid::Uuid::new_v4().to_string());
         let labels = pool.labels();
         let label_pool = labels.get("nmcp.nwrx.io/pool").unwrap();
         let label_uid = labels.get("nmcp.nwrx.io/uid").unwrap();

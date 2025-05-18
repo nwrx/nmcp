@@ -48,7 +48,8 @@ mod tests {
 
     #[test]
     fn test_mcp_server_name_service() {
-        let server = MCPServer::new("test-server", Default::default());
+        let mut server = MCPServer::new("test-server", Default::default());
+        server.metadata.uid = uuid::Uuid::new_v4().to_string().into();
         let service_name = server.name_service();
         let expected = format!(
             "mcp-server-svc-{}-{}-{}",
@@ -61,7 +62,8 @@ mod tests {
 
     #[test]
     fn test_mcp_server_name_pod() {
-        let server = MCPServer::new("test-server", Default::default());
+        let mut server = MCPServer::new("test-server", Default::default());
+        server.metadata.uid = uuid::Uuid::new_v4().to_string().into();
         let pod_name = server.name_pod();
         let expected = format!(
             "mcp-server-{}-{}-{}",
@@ -74,7 +76,8 @@ mod tests {
 
     #[test]
     fn test_mcp_server_labels() {
-        let server = MCPServer::new("test-server", Default::default());
+        let mut server = MCPServer::new("test-server", Default::default());
+        server.metadata.uid = uuid::Uuid::new_v4().to_string().into();
         let labels = server.labels();
         let label_app = labels.get("app").unwrap();
         let label_uid = labels.get("nmcp.nwrx.io/uid").unwrap();
@@ -83,5 +86,20 @@ mod tests {
         assert_eq!(label_app, &server.name_pod());
         assert_eq!(label_uid, server.metadata.uid.as_ref().unwrap());
         assert_eq!(label_pool, &server.spec.pool);
+    }
+
+    #[test]
+    fn test_mcp_server_list() {
+        let list = ObjectList::<MCPServer> {
+            metadata: Default::default(),
+            types: Default::default(),
+            items: vec![
+                MCPServer::new("s1", Default::default()),
+                MCPServer::new("s2", Default::default()),
+                MCPServer::new("s3", Default::default()),
+            ],
+        };
+        let mcp_server_list: MCPServerList = list.into();
+        assert_eq!(mcp_server_list.0.items.len(), 3);
     }
 }
