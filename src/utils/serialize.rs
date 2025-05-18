@@ -5,8 +5,8 @@ use serde_yml as YAML;
 /// Serialize a CRD object to JSON or YAML based on the output format
 pub fn serialize<T: serde::Serialize>(crd: &T, format: &str) -> Result<String> {
     match format {
-        "json" => JSON::to_string_pretty(&crd).map_err(Error::SerializeJsonError),
-        "yaml" => YAML::to_string(&crd).map_err(Error::YamlError),
+        "json" => JSON::to_string_pretty(&crd).map_err(Error::from),
+        "yaml" => YAML::to_string(&crd).map_err(Error::from),
         _ => Err(Error::UnsupportedFormat(format.to_string())),
     }
 }
