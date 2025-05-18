@@ -78,12 +78,17 @@ impl Kubeconfig {
         let mut kubeconfig =
             kube::config::Kubeconfig::from_yaml(&config).expect("Failed to create kube config");
 
-        // --- Update the kubeconfig with the host port from the Testcontainers instance.
+        // --- Update the kubeconfig with the host port from the Testcontainers instance
+        // --- and use the static port provided by the `testcontainers-modules::k3s` module.
         kubeconfig.clusters.iter_mut().for_each(|cluster| {
             if let Some(cluster) = cluster.cluster.as_mut() {
                 if let Some(server) = cluster.server.as_mut() {
                     *server = format!("https://127.0.0.1:{port}");
                 }
+
+                // --- Ignore TLS verification for the testcontainers instance.
+                // --- This is required for the testcontainers instance to work.
+                cluster.insecure_skip_tls_verify = Some(true);
             }
         });
 
