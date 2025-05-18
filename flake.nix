@@ -46,19 +46,15 @@
           strictDeps = true;
 
           # Include all the necessary container tools in the build environment
-          buildInputs = [
-            pkgs.podman
-            pkgs.podman-compose
-            pkgs.runc
-            pkgs.conmon
-            pkgs.skopeo
-            pkgs.fuse-overlayfs
-            pkgs.slirp4netns
+          buildInputs = with pkgs; [
+            cacert       # CA certificates for HTTPS requests
+            rootlesskit  # Rootless container networking
+            docker       # Docker CLI for building and running containers
           ];
 
-          # Skip running tests during the build phase - we'll run them separately
-          # with proper Podman configuration
-          doCheck = false;
+          # Start the `dockerd-rootless` daemon in the background before
+          # running the tests. It allows us to use testcontainers when testing.
+          cargoTestCommand = "dockerd-rootless && cargoWithProfile test";
 
           # Set the target architecture and Rust flags for static linking
           # and to avoid compilation errors due to large stack frames
@@ -70,27 +66,24 @@
           RUST_MIN_STACK = "16777216";
         };
 
-        # Build *just* the cargo dependencies, so we can reuse
-        # all of that work (e.g. via cachix) when running in CI
+        # Build *just* the cargo dependencies, so we can reuse them.
         cargoArtifacts = craneLib.buildDepsOnly (commonArgs // {
           pname = "nmcp-deps";
         });
 
-        # Build the actual crate itself, reusing the dependency
-        # artifacts from above.
+        # Build the actual crate itself, reusing the dependency.
         nmcp = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
         });
 
-        # Run clippy (and deny all warnings) on the crate source,
-        # reusing the dependency artifacts (e.g. from build scripts or
-        # proc-macros) from above.
-        #
-        # Note that this is done as a separate derivation so it
-        # does not impact building just the crate by itself.
+        # Run clippy (and deny all warnings) on the crate source.
         nmcpClippy = craneLib.cargoClippy (commonArgs // {
           inherit cargoArtifacts;
-          cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+        });
+
+        # Run cargo-deny on the crate source for security audits.
+        nmcpDeny = craneLib.cargoDeny (commonArgs // {
+          inherit cargoArtifacts;
         });
 
         # Define the docker image that simply runs the `nmcp` binary
@@ -98,7 +91,7 @@
         nmcpDockerImage = pkgs.dockerTools.buildLayeredImage {
           name = "nmcp";
           tag = "latest";
-          contents = [ nmcp ];
+          contents = with pkgs; [ nmcp cacert ];
           config.Entrypoint = [ "${nmcp}/bin/nmcp" ];
           config.ExposedPorts = { "8080/tcp" = {}; };
         };
@@ -106,23 +99,24 @@
     {
 
       # Expose the `nmcp` package and the `nmcp` Docker image.
-      packages.default = nmcp;
-      packages.docker = nmcpDockerImage;
+      packages = {
+        default = nmcp;
+        docker = nmcpDockerImage;
+      };
 
       # Enable devshell that inherits from the `nmcp` package.
       devShells.default = craneLib.devShell {
         inputsFrom = [ nmcp ];
-        packages = [
-          pkgs.cargo-audit
-          pkgs.cargo-watch
-          pkgs.podman
-          pkgs.podman-compose
+        packages = with pkgs; [
+          cargo-watch
+          cargo-deny
         ];
       };
 
       checks = {
         inherit
           nmcp
+          nmcpDeny
           nmcpClippy;
       };
     });

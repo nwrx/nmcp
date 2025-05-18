@@ -8,7 +8,8 @@ default:
 ##########################################
 
 build:
-    cargo build
+    nix build .#default
+    nix build .#docker
 
 ##########################################
 
@@ -60,20 +61,6 @@ gateway:
     cargo watch -s 'clear && cargo run -- gateway --port 3000'
 
 ##########################################
-
-# Docker image building and pushing
-# Build the static Docker image with musl
-docker-build registry='' tag='latest':
-    docker build -t {{registry}}nmcp:{{tag}} .
-
-# Push the Docker images to a registry
-docker-push registry='' tag='latest':
-    docker push {{registry}}nmcp:{{tag}}
-
-# Build and push in one command
-docker-build-push registry='' tag='latest':
-    just docker-build {{registry}} {{tag}}
-    just docker-push {{registry}} {{tag}}
 
 # Run the NMCP operator in Docker
 docker-run-operator registry='' tag='latest' kubeconfig_path=KUBECONFIG:

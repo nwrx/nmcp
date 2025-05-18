@@ -1,0 +1,14 @@
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+allow-git = ["https://github.com/modelcontextprotocol/rust-sdk"]
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# from the workspace.
+[advisories]
+unmaintained = 'workspace'
+
+[licenses]
+allow = ["MIT", "ISC", "Zlib", "Apache-2.0", "Unicode-3.0", "BSD-3-Clause"]

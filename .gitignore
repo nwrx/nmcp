@@ -95,3 +95,6 @@ tests/rustdoc-gui/src/**.lock
 ## direnv
 /.envrc
 /.direnv/
+
+# Nix build
+/result
