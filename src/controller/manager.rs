@@ -142,13 +142,13 @@ impl Controller {
 
 #[cfg(test)]
 mod tests {
-    use crate::{MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec, TestContext};
+    use crate::{get_test_context, MCPPool, MCPPoolSpec, MCPServer, MCPServerSpec};
     use kube::{Api, ResourceExt};
 
     /// Should return an `MCPPool` instance with the correct name and spec.
     #[tokio::test]
     async fn test_create_pool_result() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let pool = controller
@@ -166,7 +166,7 @@ mod tests {
     /// Should create an MCPPool resource in the Kubernetes cluster.
     #[tokio::test]
     async fn test_create_pool_in_kube() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let pool_created = controller
@@ -193,7 +193,7 @@ mod tests {
     /// Should return a `MCPServer` instance with the correct name and spec.
     #[tokio::test]
     async fn test_create_server_result() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let server = controller
@@ -211,7 +211,7 @@ mod tests {
     /// Should create an MCPServer resource in the Kubernetes cluster.
     #[tokio::test]
     async fn test_create_server_in_kube() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let server_created = controller
@@ -238,7 +238,7 @@ mod tests {
     /// Should return the patched `MCPPool` resource.
     #[tokio::test]
     async fn test_patch_pool_spec() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -263,7 +263,7 @@ mod tests {
     /// Should patch the spec of an existing `MCPPool` in Kubernetes.
     #[tokio::test]
     async fn test_patch_pool_in_kube() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -297,7 +297,7 @@ mod tests {
     /// Should returned the patched `MCPServer` resource.
     #[tokio::test]
     async fn test_patch_server_spec() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -322,7 +322,7 @@ mod tests {
     /// Should patch the spec of an existing `MCPServer` in Kubernetes.
     #[tokio::test]
     async fn test_patch_server_in_kube() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -356,7 +356,7 @@ mod tests {
     /// Should delete the `MCPServer` resource from Kubernetes.
     #[tokio::test]
     async fn test_delete_server() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -380,7 +380,7 @@ mod tests {
     /// Should delete the `MCPPool` resource from Kubernetes.
     #[tokio::test]
     async fn test_delete_pool() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 controller
@@ -406,7 +406,7 @@ mod tests {
     /// Should return an empty list of servers when no servers are present.
     #[tokio::test]
     async fn test_list_servers_empty() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let servers = controller.search_servers().await.unwrap();
@@ -420,7 +420,7 @@ mod tests {
     /// Should return an empty list of pools when no pools are present.
     #[tokio::test]
     async fn test_list_pools_empty() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let pools = controller.search_pools().await.unwrap();
@@ -434,7 +434,7 @@ mod tests {
     /// Should return a list of pools when pools are present.
     #[tokio::test]
     async fn test_list_pools_with_data() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let pool1 = controller.create_pool("p1", Default::default()).await?;
@@ -452,7 +452,7 @@ mod tests {
     /// Should return a list of servers when servers are present.
     #[tokio::test]
     async fn test_list_servers_with_data() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let server1 = controller.create_server("s1", Default::default()).await?;
@@ -472,7 +472,7 @@ mod tests {
     /// Should return a pool when it exists.
     #[tokio::test]
     async fn test_get_pool() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let pool_created = controller.create_pool("p1", Default::default()).await?;
@@ -488,7 +488,7 @@ mod tests {
     /// Should reject with `Error::PoolGetError` when the pool does not exist.
     #[tokio::test]
     async fn test_get_pool_not_found() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let result = controller.get_pool_by_name("nonexistent").await;
@@ -504,7 +504,7 @@ mod tests {
     /// Should return a server when it exists.
     #[tokio::test]
     async fn test_get_server() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let server_created = controller.create_server("s1", Default::default()).await?;
@@ -520,7 +520,7 @@ mod tests {
     /// Should reject with `Error::ServerNotFound` when the server does not exist.
     #[tokio::test]
     async fn test_get_server_not_found() {
-        TestContext::new()
+        get_test_context()
             .await
             .run(|controller| async move {
                 let result = controller.get_server_by_name("nonexistent").await;
