@@ -1634,6 +1634,7 @@ dependencies = [
  "futures",
  "k8s-openapi",
  "kube",
+ "once_cell",
  "rand",
  "rmcp",
  "schemars",

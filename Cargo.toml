@@ -34,6 +34,7 @@ structopt = "0.3.26"
 axum = { version = "0.8.4", features = ["macros"] }
 axum_thiserror = "0.1.0"
 tower-http = "0.6.4"
+once_cell = "1.21.3"
 
 [dev-dependencies]
 testcontainers = { version = "0.24.0" }
