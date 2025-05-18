@@ -32,7 +32,6 @@ impl TestContext {
             .with_conf_mount(temp_dir())
             .with_privileged(true)
             .with_userns_mode("host")
-            .with_container_name("nmcp-test")
             .start()
             .await
             .expect("Failed to start K3s instance");
