@@ -32,6 +32,7 @@ impl TestContext {
             .with_conf_mount(temp_dir())
             .with_privileged(true)
             .with_userns_mode("host")
+            .with_reuse(testcontainers::ReuseDirective::Never)
             .start()
             .await
             .expect("Failed to start K3s instance");
