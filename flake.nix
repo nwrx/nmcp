@@ -89,8 +89,7 @@
         # Define the docker image that simply runs the `nmcp` binary
         # in a container. This is useful for running the binary
         nmcpDockerImage = pkgs.dockerTools.buildLayeredImage {
-          name = "nmcp";
-          tag = "latest";
+          name = "nwrx/nmcp";
           contents = with pkgs; [ nmcp cacert ];
           config.Entrypoint = [ "${nmcp}/bin/nmcp" ];
           config.ExposedPorts = { "8080/tcp" = {}; };

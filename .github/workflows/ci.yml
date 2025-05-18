@@ -1,0 +1,73 @@
+name: CI
+permissions:
+  id-token: write
+  contents: write
+  packages: write
+  attestations: write
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  ci:
+    name: Continuous Integration & Deployment to Registry
+    runs-on: ubuntu-latest
+    steps:
+
+      # Setup Nix with Cachix for remote nix store caching. Additionally, setup
+      # Docker Buildx so we can push to the GitHub Container Registry and Docker Hub.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v14
+        with:
+          name: nwrx
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generate the metadata (tags and labels) for the Docker image using the
+      # docker/metadata-action. This will create tags based on the branch name,
+      # pull request number, and semantic versioning. It will also create labels
+      # based on the GitHub repository, commit SHA, and other relevant information.
+      - id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      # Build the binary and Docker image using Nix.
+      # Load the Docker image from the Nix build result.
+      - run: |
+          nix build .#docker
+          IMAGE=$(docker load < ./result | tail -n 1 | cut -d' ' -f3)
+
+          # Tag each image with the metadata generated in the previous step.
+          TAGS=$(echo "${{ steps.metadata.outputs.tags }}" | tr '\n' ' ')
+          for TAG in $TAGS; do
+            docker tag ${IMAGE} ${TAG}
+          done
+
+          # Push the Docker image to the GitHub Container Registry.
+          docker push ghcr.io/${{ github.repository }} --all-tags
