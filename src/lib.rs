@@ -11,7 +11,7 @@ pub use transport::*;
 pub use utils::*;
 
 #[cfg(test)]
-mod test_utils;
+mod tests;
 
 #[cfg(test)]
-pub use test_utils::TestContext;
+pub use tests::*;
