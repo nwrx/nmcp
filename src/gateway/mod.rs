@@ -46,11 +46,8 @@ async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
 }
 
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
-    let readme = include_str!("../../README.md");
-    let readme = readme.to_string();
     api.title("NMCP")
         .summary("Kubernetes operator for managing MCP servers")
-        .description(&readme)
         .tag(Tag {
             name: "Server".to_string(),
             description: Some("Operations related to the `MCPServer` resources.".to_string()),
