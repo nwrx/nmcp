@@ -1,6 +1,6 @@
-use crate::{get_kube_client, MCPServerTransportStdio, Result};
+use crate::{get_kube_client, Kubeconfig, MCPServerTransportStdio, Result};
 use kube::Client;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use structopt::StructOpt;
 use tokio::sync::RwLock;
 
@@ -18,17 +18,13 @@ pub const MCP_SERVER_FINALIZER: &str = "mcpserver.nmcp.nwrx.io/finalizer";
 /// Configuration for the Kubernetes operator
 #[derive(Debug, Clone, StructOpt, Default)]
 pub struct ControllerOptions {
-    /// Log level (debug, info, warn, error)
-    #[structopt(short, long, default_value = "info", env = "LOG_LEVEL")]
-    pub log_level: String,
-
     /// Namespace to watch (default: all namespaces)
     #[structopt(short, long, default_value = "default", env = "KUBECTL_NAMESPACE")]
     pub namespace: String,
 
     /// Path to kubeconfig file (uses in-cluster config if not specified)
     #[structopt(short, long, env = "KUBECONFIG")]
-    pub kubeconfig: Option<PathBuf>,
+    pub kubeconfig: Kubeconfig,
 }
 
 #[derive(Clone)]
