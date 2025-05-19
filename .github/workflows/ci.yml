@@ -89,8 +89,8 @@ jobs:
         with:
           overwrite: true
           make_latest: true
-          file: ./output/${{ matrix.asset_name }}
-          file_glob: /output/*
+          file: ./output/*
+          file_glob: true
           body: ${{ steps.changelog.outputs.changelog }}
           tag: ${{ github.ref }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
