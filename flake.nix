@@ -100,7 +100,7 @@
       # Expose the `nmcp` package and the `nmcp` Docker image.
       packages = {
         default = nmcp;
-        docker = nmcpDockerImage;
+        dockerImage = nmcpDockerImage;
       };
 
       # Enable devshell that inherits from the `nmcp` package.
