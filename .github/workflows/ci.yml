@@ -10,7 +10,7 @@ on:
     branches:
       - main
     tags:
-      - v*
+      - "v*.*.*"
   pull_request:
     branches:
       - main
@@ -19,7 +19,13 @@ on:
 jobs:
   ci:
     name: Continuous Integration & Deployment to Registry
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: nmcp
+            asset_name: nmcp-linux-amd64
+    runs-on: ${{ matrix.os }}
     steps:
 
       # Setup Nix with Cachix for remote nix store caching. Additionally, setup
@@ -61,12 +67,31 @@ jobs:
 
       # Build the binary with nix and upload it as an artifact.
       - run: nix build
+
+      # Generate the checksum for the binary and copy it to the output directory.
+      - id: checksum
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          CHECKSUM=$(sha256sum ./result/bin/${{ matrix.artifact_name }} | cut -d' ' -f1)
+          mkdir -p ./output
+          echo $CHECKSUM > ./output/${{ matrix.asset_name }}.sha256
+          cp ./result/bin/${{ matrix.artifact_name }} ./output/${{ matrix.asset_name }}
+
+      # Generate a CHANGELOG.md file so we can use it in the release.
+      - id: changelog
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        run: 
+          CHANGELOG=$(nix develop --command git-cliff)
+          echo "changelog=${CHANGELOG}" >> $GITHUB_OUTPUT
+
       - uses: svenstaro/upload-release-action@v2
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
         with:
           overwrite: true
-          asset_name: nmcp
-          file: result/bin/nmcp
+          make_latest: true
+          file: ./output/${{ matrix.asset_name }}
+          file_glob: /output/*
+          body: ${{ steps.changelog.outputs.changelog }}
           tag: ${{ github.ref }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 

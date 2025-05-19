@@ -9,28 +9,28 @@ default:
 
 build:
     nix build .#default
-    nix build .#docker
 
-##########################################
+build-docker:
+    nix build .#dockerImage
 
-# Export CRD schemas
-kube-crd-export: build
-    ./target/debug/nmcp export --type crd --resource pool > ./k3s/pool.json
-    ./target/debug/nmcp export --type crd --resource server > ./k3s/server.json
-
-kube-crd-uninstall: build
-    ./target/debug/nmcp export --type crd --resource pool | kubectl delete -f - || true
-    ./target/debug/nmcp export --type crd --resource server --format yaml | kubectl delete -f - || true
-
-kube-crd-install: kube-crd-uninstall
-    ./target/debug/nmcp export --type crd --resource pool --format yaml | kubectl apply -f -
-    ./target/debug/nmcp export --type crd --resource server --format yaml | kubectl apply -f -
+# Update the cargo version, create a new git tag, and push the changes
+release type='minor':
+    cargo release \
+        --no-publish \
+        --sign-commit \
+        --sign-tag \
+        --no-push \
+        {{type}}
 
 ##########################################
 
 # Start the Kubernetes cluster.
 kube-start:
     cd kube && docker-compose up --detach
+
+kube-crd-install: kube-crd-uninstall
+    ./target/debug/nmcp export --type crd --resource pool --format yaml | kubectl apply -f -
+    ./target/debug/nmcp export --type crd --resource server --format yaml | kubectl apply -f -
 
 # Setup and start the k8s dashboard
 kube-setup: kube-start

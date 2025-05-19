@@ -50,6 +50,7 @@
             cacert       # CA certificates for HTTPS requests
             rootlesskit  # Rootless container networking
             docker       # Docker CLI for building and running containers
+            git-cliff  # Git changelog generator
           ];
 
           # Start the `dockerd-rootless` daemon in the background before
@@ -109,6 +110,7 @@
         packages = with pkgs; [
           cargo-watch
           cargo-deny
+          cargo-release
         ];
       };
 
