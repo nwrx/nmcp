@@ -23,7 +23,7 @@ pub struct ControllerOptions {
     pub namespace: String,
 
     /// Path to Kubernetes config file.
-    #[arg(short, long)]
+    #[arg(short, long, env = "KUBECONFIG")]
     pub kubeconfig: Kubeconfig,
 }
 
