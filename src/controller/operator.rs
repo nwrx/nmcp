@@ -255,7 +255,7 @@ impl Controller {
 
     /// Start the server pod and service for the given MCPServer.
     #[tracing::instrument(name = "Up", skip_all)]
-    pub async fn ensure_server_up(&self, server: &MCPServer) -> Result<()> {
+    pub async fn ensure_server_is_up(&self, server: &MCPServer) -> Result<()> {
         tracing::debug!("Ensuring server is up {}", server.name_any());
 
         // --- Check if the server is already running.
@@ -295,7 +295,7 @@ impl Controller {
 
     /// Stop the server pod and service for the given MCPServer.
     #[tracing::instrument(name = "Shutdown", skip_all, err)]
-    pub async fn ensure_server_down(&self, server: &MCPServer) -> Result<()> {
+    pub async fn ensure_server_is_down(&self, server: &MCPServer) -> Result<()> {
         tracing::debug!("Ensuring server is down");
         let server = self.get_server_by_name(&server.name_any()).await?;
         let phase = server.status.clone().unwrap().phase;
@@ -333,27 +333,23 @@ impl Controller {
             let phase = server.status.clone().unwrap_or_default().phase;
             match phase {
                 Phase::Idle => {
-                    tracing::info!("Requesting server start");
+                    let condition = Condition::Requested;
+                    self.set_server_status(&server, condition).await?;
+                }
+                Phase::Stopping => {
                     let condition = Condition::Requested;
                     self.set_server_status(&server, condition).await?;
                 }
                 Phase::Failed => {
-                    Err(Error::Internal("Server is in an error state".to_string()))?;
+                    return Err(Error::Internal("Server is in an error state".to_string()))?;
                 }
                 Phase::Running => {
-                    tracing::info!("Server running, we can proceed");
                     return Ok(());
                 }
-                Phase::Stopping => {
-                    tracing::info!("Server is stopping, cannot start");
-                    Err(Error::Internal(
-                        "Server is stopping, pending start".to_string(),
-                    ))?;
+                _ => {
+                    sleep(Duration::from_millis(100)).await;
                 }
-                Phase::Requested => tracing::info!("Server requested, pending start"),
-                Phase::Starting => tracing::info!("Server is starting, waiting for it to be ready"),
             }
-            sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -363,9 +359,23 @@ impl Controller {
         &self,
         server: &MCPServer,
     ) -> Result<Arc<RwLock<MCPServerTransportStdio>>> {
-        // --- Check if the transport already exists for this server.
-        if let Some(transport) = self.transports.read().await.get(&server.name_any()) {
-            return Ok(transport.clone());
+        // --- Check if the transport already exists and is alive for this server.
+        let should_remove = {
+            match self.transports.read().await.get(&server.name_any()) {
+                None => false,
+                Some(transport) => {
+                    if transport.read().await.is_alive().await {
+                        return Ok(transport.clone());
+                    } else {
+                        true
+                    }
+                }
+            }
+        };
+
+        // --- Remove the transport outside of the read lock scope if needed
+        if should_remove {
+            self.transports.write().await.remove(&server.name_any());
         }
 
         // --- Create a new channel if none exists.
@@ -403,7 +413,7 @@ impl Controller {
     }
 
     /// Determine if the server should be started based on its status and pool limits.
-    #[tracing::instrument(name = "ShouldBeUp", skip_all)]
+    #[tracing::instrument(name = "CanServerdBeUp", skip_all)]
     pub async fn can_server_be_up(&self, server: &MCPServer) -> Result<bool> {
         let pool = self.get_pool_by_name(&server.spec.pool).await?;
         let pool_status = pool.status.clone().unwrap_or_default();
@@ -423,7 +433,7 @@ impl Controller {
     }
 
     /// Determine if the server should be shutdown based on its status and idle timeout.
-    #[tracing::instrument(name = "ShouldBeDown", skip_all)]
+    #[tracing::instrument(name = "ShouldServerBeDown", skip_all)]
     pub async fn should_server_be_down(&self, server: &MCPServer) -> Result<bool> {
         let status = server.status.clone().unwrap_or_default();
         let pool = self.get_pool_by_name(&server.spec.pool).await?;
@@ -473,7 +483,7 @@ impl Controller {
             move |event| async move {
                 match event {
                     Event::Cleanup(server) => {
-                        self.ensure_server_down(&server).await?;
+                        self.ensure_server_is_down(&server).await?;
                         Ok(Action::requeue(Duration::from_secs(5)))
                     }
                     Event::Apply(server) => {
@@ -481,43 +491,43 @@ impl Controller {
                         match phase {
                             Phase::Idle => {
                                 tracing::info!("Server is idle, ensuring it is down",);
-                                self.ensure_server_down(&server).await?;
+                                self.ensure_server_is_down(&server).await?;
                                 Ok(Action::requeue(Duration::from_secs(5)))
                             }
                             Phase::Stopping => {
                                 tracing::info!("Server is stopping, ensuring it is down");
-                                self.ensure_server_down(&server).await?;
+                                self.ensure_server_is_down(&server).await?;
                                 Ok(Action::requeue(Duration::from_secs(5)))
                             }
                             Phase::Failed => {
                                 tracing::info!("Server is in error state, ensuring it is down");
-                                self.ensure_server_down(&server).await?;
+                                self.ensure_server_is_down(&server).await?;
                                 Ok(Action::requeue(Duration::from_secs(5)))
                             }
                             Phase::Requested => {
                                 tracing::info!("Server is Requested, checking if it should be up");
                                 if controller.can_server_be_up(&server).await? {
-                                    self.ensure_server_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?;
                                 } else {
-                                    self.ensure_server_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?;
                                 }
                                 Ok(Action::requeue(Duration::from_secs(5)))
                             }
                             Phase::Starting => {
                                 tracing::info!("Server is Starting, checking if it should be up");
                                 if controller.can_server_be_up(&server).await? {
-                                    self.ensure_server_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?;
                                 } else if controller.should_server_be_down(&server).await? {
-                                    self.ensure_server_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?;
                                 }
                                 Ok(Action::await_change())
                             }
                             Phase::Running => {
                                 tracing::debug!("Server is Running, checking if it should be down");
                                 if controller.should_server_be_down(&server).await? {
-                                    self.ensure_server_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?;
                                 } else {
-                                    self.ensure_server_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?;
                                 }
                                 Ok(Action::requeue(Duration::from_secs(5)))
                             }

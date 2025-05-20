@@ -1,49 +1,25 @@
 use super::MCPEvent;
 use crate::{Error, MCPServer, Result, DEFAULT_POD_BUFFER_SIZE, DEFAULT_SSE_CHANNEL_CAPACITY};
 use kube::api::AttachedProcess;
-use rmcp::model::{
-    ErrorCode, ErrorData, JsonRpcError, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse,
-    JsonRpcVersion2_0, NumberOrString,
-};
+use rmcp::model::{ClientJsonRpcMessage, JsonRpcMessage, NumberOrString};
 use serde_json as JSON;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
-use tokio::time::{sleep, timeout};
+use tokio::time;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{debug, error, info};
-
-///////////////////////////////////////////////////////////////////////
-
-impl From<Error> for JsonRpcMessage {
-    fn from(error: Error) -> Self {
-        JsonRpcMessage::Error(JsonRpcError {
-            error: ErrorData {
-                code: ErrorCode(-32603),
-                data: None,
-                message: error.to_string().into(),
-            },
-            id: NumberOrString::Number(u32::MAX),
-            jsonrpc: JsonRpcVersion2_0,
-        })
-    }
-}
-
-///////////////////////////////////////////////////////////////////////
 
 pub struct MCPServerTransportStdio {
     pub process: Arc<RwLock<AttachedProcess>>,
     pub server: MCPServer,
+    is_alive: Arc<RwLock<bool>>,
     is_listening: Arc<RwLock<bool>>,
-    stdin_rx: Arc<RwLock<Receiver<JsonRpcRequest>>>,
-    stdin_tx: Arc<RwLock<Sender<JsonRpcRequest>>>,
+    stdin_rx: Arc<RwLock<Receiver<ClientJsonRpcMessage>>>,
+    stdin_tx: Arc<RwLock<Sender<ClientJsonRpcMessage>>>,
     stdout_tx: Arc<RwLock<Sender<MCPEvent>>>,
     stdout_rx: Arc<RwLock<Receiver<MCPEvent>>>,
-
-    /// The cached `initialize` response from the MCP server.
-    initialize_response: Arc<RwLock<Option<JsonRpcResponse>>>,
 }
 
 impl MCPServerTransportStdio {
@@ -57,62 +33,39 @@ impl MCPServerTransportStdio {
         Self {
             server,
             process: Arc::new(RwLock::new(process)),
+            is_alive: Arc::new(RwLock::new(true)),
             is_listening: Arc::new(RwLock::new(false)),
             stdin_rx: Arc::new(RwLock::new(stdin_rx)),
             stdin_tx: Arc::new(RwLock::new(stdin_tx)),
             stdout_tx: Arc::new(RwLock::new(stdout_tx)),
             stdout_rx: Arc::new(RwLock::new(stdout_rx)),
-            initialize_response: Arc::new(RwLock::new(None)),
         }
     }
 
     /// Listen for messages from the process stdout and send them to the receiver.
     pub async fn listen(&self) -> Result<()> {
-        // --- If already listening, return early.
-        let mut is_listening = self.is_listening.write().await;
-        if *is_listening {
+        if *self.is_listening.read().await {
             return Ok(());
         }
 
-        // --- Spawn a task to read from the process stdout and send events to the SSE stream.
-        let stdout_tx = self.stdout_tx.clone();
+        let is_alive_1 = self.is_alive.clone();
+        let is_alive_2 = self.is_alive.clone();
         let stdin_rx = self.stdin_rx.clone();
+        let stdout_tx_1 = self.stdout_tx.clone();
+        let stdout_tx_2 = self.stdout_tx.clone();
         let mut stdin = self.process.clone().write().await.stdin().unwrap();
         let mut stdout = self.process.clone().write().await.stdout().unwrap();
-
-        // --- Read from the stdin channel and write to the process stdin.
-        tokio::spawn(async move {
-            loop {
-                match stdin_rx.write().await.recv().await {
-                    Ok(message) => {
-                        let message = JSON::to_string(&message).unwrap();
-                        let message = format!("{message}\n");
-                        let message = message.as_bytes();
-                        if let Err(e) = stdin.write_all(message).await {
-                            error!("Failed to write to process stdin: {}", e);
-                            break;
-                        }
-                        // if let Err(e) = stdin.flush().await {
-                        //     error!("Failed to flush process stdin: {}", e);
-                        //     break;
-                        // }
-                    }
-                    Err(e) => {
-                        error!("Error reading from stdin channel: {}", e);
-                        break;
-                    }
-                }
-            }
-        });
+        let mut buffer = vec![0u8; DEFAULT_POD_BUFFER_SIZE];
 
         // --- Read from the stdout of the process and send to the SSE stream.
         tokio::spawn(async move {
-            let mut buffer = vec![0u8; DEFAULT_POD_BUFFER_SIZE];
             loop {
                 match stdout.read(&mut buffer).await {
                     Ok(0) => {
-                        sleep(Duration::from_millis(100)).await;
+                        time::sleep(Duration::from_millis(100)).await;
                     }
+
+                    // --- Read the process stdout and send to the SSE stream.
                     Ok(size) => {
                         // --- Process the buffer line by line
                         let data = &buffer[..size];
@@ -129,122 +82,147 @@ impl MCPServerTransportStdio {
                             };
 
                             // --- Broadcast the message to the SSE stream
-                            if let JsonRpcMessage::Response(response) = &message {
-                                let id = response.id.clone();
-                                match stdout_tx.write().await.send(message.into()) {
-                                    Ok(_) => info!("[LISTEN/STDOUT]: {}", id),
-                                    Err(e) => {
-                                        error!("Failed to send event to SSE stream: {}", e);
+                            if let JsonRpcMessage::Response(..) = &message {
+                                match stdout_tx_1.read().await.send(message.into()) {
+                                    Ok(..) => {}
+                                    Err(error) => {
+                                        tracing::error!("{}", error);
                                         break;
                                     }
                                 }
                             }
                         }
                     }
-                    Err(e) => {
-                        error!("[LISTEN/STDOUT]: Error reading from process: {}", e);
+                    Err(error) => {
+                        tracing::error!("{}", error);
                         break;
                     }
                 }
             }
 
-            info!("[LISTEN/STDOUT] Process has closed stdout stream");
+            *is_alive_1.write().await = false;
         });
 
-        // --- Set the listening flag to true.
-        *is_listening = true;
-        Ok(())
-    }
-
-    /// Write a message to the stdin of the attached process and read the first message from stdout.
-    pub async fn send(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
-        // let mut stdout_rx = self.stdout_rx.write().await;
-        let stdin_tx = self.stdin_tx.write().await;
-        let mut stdout_rx = self.stdout_rx.write().await;
-
-        // --- If the request is an initialize request, check if we have a cached response.
-        if request.request.method == "initialize" {
-            let initialize_response = self.initialize_response.read().await;
-            if let Some(response) = &*initialize_response {
-                return Ok(response.clone());
-            }
-        }
-
-        // --- First, send the message to the stdin channel.
-        match stdin_tx.send(request.clone()) {
-            Ok(_) => info!("[MESSAGE/REQUEST]: {}", JSON::to_string(&request).unwrap()),
-            Err(e) => {
-                error!("[MESSAGE/REQUEST]: {}", e);
-                return Err(Error::Internal(
-                    "Failed to send message to stdin channel".into(),
-                ));
-            }
-        }
-
-        // Set a timeout for the response
-        let future = async {
+        // --- Spawn a task to read from the process stdout and send events to the SSE stream.
+        tokio::spawn(async move {
             loop {
-                match stdout_rx.recv().await {
-                    Ok(MCPEvent::Message(message)) => {
-                        // --- Check if the message is the initialize response. If so, cache it
-                        // --- so we can reuse it later if we get another initialize request.
-                        if request.request.method == "initialize" {
-                            if let JsonRpcMessage::Response(response) = &message {
-                                if response.id == request.id {
-                                    let mut initialize_response =
-                                        self.initialize_response.write().await;
-                                    *initialize_response = Some(response.clone());
-                                }
-                            }
-                        }
-
-                        // --- Check if the message is a response to the request.
-                        if let JsonRpcMessage::Response(response) = message {
-                            if response.id == request.id {
-                                info!(
-                                    "[MESSAGE/RESPONSE]: {}",
-                                    JSON::to_string(&response.id).unwrap()
-                                );
-                                return Ok(response);
+                match stdin_rx.write().await.recv().await {
+                    Ok(request) => {
+                        let id = match request.clone() {
+                            JsonRpcMessage::Request(request) => request.id,
+                            _ => rmcp::model::NumberOrString::Number(u32::MAX),
+                        };
+                        let message = JSON::to_string(&request).unwrap();
+                        let message_str = format!("{message}\n");
+                        let message = message_str.as_bytes();
+                        match stdin.write_all(message).await {
+                            Ok(_) => {}
+                            Err(error) => {
+                                stdout_tx_2.read().await.send((id, error).into()).unwrap();
+                                *is_alive_2.write().await = false;
+                                break;
                             }
                         }
                     }
                     Err(e) => {
-                        error!("Failed to read from stdout channel: {}", e);
-                        return Err(Error::Internal("Failed to read from stdout channel".into()));
+                        tracing::error!("Error reading from stdin channel: {}", e);
+                        break;
                     }
-                    _ => {
-                        info!("Ignoring message");
-                        debug!("Ignoring message");
+                }
+            }
+        });
+
+        // --- Set the listening flag to true.
+        *self.is_listening.write().await = true;
+        Ok(())
+    }
+
+    /// Write a message to the stdin of the attached process and read the first message from stdout.
+    pub async fn send(&self, request: ClientJsonRpcMessage) -> Result<Option<JsonRpcMessage>> {
+        // --- Check if the message is a request.
+        let id = match request.clone() {
+            JsonRpcMessage::Request(request) => Some(request.id),
+            _ => None,
+        };
+
+        // --- First, send the message to the stdin channel.
+        let stdin_tx = self.stdin_tx.write().await;
+        match stdin_tx.send(request.clone()) {
+            Ok(..) => {}
+            Err(error) => {
+                let message = format!("Failed to send message to stdin channel: {error}");
+                return Err(Error::Internal(message));
+            }
+        }
+
+        // --- If the message is a request, wait for the response.
+        if let Some(id) = id {
+            let timeout = Duration::from_secs(1);
+            match self.wait_for_response(id, timeout).await {
+                Ok(result) => Ok(Some(result)),
+                Err(error) => Err(error),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Wait for a result from the process stdout with the given ID.
+    pub async fn wait_for_response(
+        &self,
+        id: NumberOrString,
+        timeout: Duration,
+    ) -> Result<JsonRpcMessage> {
+        let mut stdout_rx = self.stdout_rx.write().await;
+
+        // --- Wait for a message from the process stdout.
+        let future = async {
+            loop {
+                match stdout_rx.recv().await {
+                    Ok(MCPEvent::Message(message)) => match message.clone() {
+                        JsonRpcMessage::Response(response) => {
+                            if response.id == id {
+                                return Ok(message);
+                            }
+                        }
+                        JsonRpcMessage::Error(response) => {
+                            if response.id == id {
+                                return Ok(message);
+                            }
+                        }
+                        _ => {}
+                    },
+                    Err(error) => {
+                        let message = format!("Error reading from stdout channel: {error}");
+                        tracing::error!("{}", message);
                     }
+                    _ => {}
                 }
             }
         };
 
-        // --- Timeout the future after 1 second.
-        let duration = Duration::from_secs(1);
-        match timeout(duration, future).await {
+        // --- Wait for the future to complete or timeout.
+        match time::timeout(timeout, future).await {
             Ok(result) => result,
-            Err(_) => Err(Error::Internal(format!(
-                "Timed out waiting for response to request {}",
-                request.id
-            ))),
+            Err(_) => Err(Error::Internal("Timeout waiting for result".into())),
         }
     }
 
     /// Create a stream of SSE events from the process stdout.
     pub async fn subscribe(&self, endpoint: String) -> BroadcastStream<MCPEvent> {
         let rx = self.stdout_rx.read().await.resubscribe();
-        let tx = self.stdout_tx.read().await;
+        let tx = self.stdout_tx.read().await.clone();
 
         // --- Write the endpoint to the SSE stream.
-        let event = MCPEvent::Endpoint(endpoint.to_owned());
-        match tx.send(event) {
-            Ok(_) => debug!("Sending endpoint to SSE stream: {endpoint}"),
-            Err(error) => error!("Failed to send endpoint to SSE stream: {error}"),
-        }
+        let event = MCPEvent::Endpoint(endpoint);
+        let _ = tx.send(event);
 
         // --- When the stream is closed, send an error event.
         BroadcastStream::new(rx)
+    }
+
+    /// Teardown the transport and close the process.
+    pub async fn is_alive(&self) -> bool {
+        *self.is_alive.read().await
     }
 }
