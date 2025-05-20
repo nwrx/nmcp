@@ -47,6 +47,10 @@ pub enum Error {
     #[status(StatusCode::INTERNAL_SERVER_ERROR)]
     KubeFinalizerError(#[from] kube::runtime::finalizer::Error<Box<Error>>),
 
+    #[error("Timeout reached: {0}")]
+    #[status(StatusCode::INTERNAL_SERVER_ERROR)]
+    Timeout(#[from] tokio::time::error::Elapsed),
+
     ///////////////////////////////////////////////////////////
     /// Serialization errors
     ///////////////////////////////////////////////////////////
