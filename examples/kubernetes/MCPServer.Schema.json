@@ -1,0 +1,421 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCPServer",
+  "description": "Auto-generated derived type for MCPServerSpec via `CustomResource`",
+  "type": "object",
+  "required": [
+    "spec"
+  ],
+  "properties": {
+    "spec": {
+      "$ref": "#/definitions/MCPServerSpec"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MCPServerStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "MCPServerPhase": {
+      "description": "MCPServerPhase represents the current lifecycle phase of the server",
+      "oneOf": [
+        {
+          "description": "Server is not running and has no traffic",
+          "type": "string",
+          "enum": [
+            "Idle"
+          ]
+        },
+        {
+          "description": "The server has been requested to be started but is not yet running (e.g., waiting for resources to be created).",
+          "type": "string",
+          "enum": [
+            "Requested"
+          ]
+        },
+        {
+          "description": "Server is currently running and processing requests. Meaning it's Pod and Service are up and running.",
+          "type": "string",
+          "enum": [
+            "Running"
+          ]
+        },
+        {
+          "description": "Server is starting up and not yet ready to process requests (e.g., waiting for resources to be created or initialized).",
+          "type": "string",
+          "enum": [
+            "Starting"
+          ]
+        },
+        {
+          "description": "Server is shutting down and not processing requests (e.g., waiting for resources to be deleted or cleaned up).",
+          "type": "string",
+          "enum": [
+            "Stopping"
+          ]
+        },
+        {
+          "description": "Server is in an error state and not processing requests (e.g., due to a failure in the server or its resources).",
+          "type": "string",
+          "enum": [
+            "Failed"
+          ]
+        }
+      ]
+    },
+    "MCPServerSpec": {
+      "description": "MCPServer custom resource definition",
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "The arguments to pass to the server's command. This will be used to configure the server's runtime behavior, such as specifying the configuration file to use or enabling/disabling certain features.",
+          "default": null,
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "The command to run the server. This will be used to start the server's process inside the container.",
+          "default": null,
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.EnvVar"
+          }
+        },
+        "idleTimeout": {
+          "description": "The time in seconds that a server is allowed to run without receiving any requests before it's terminated. This helps to conserve resources by shutting down idle servers.",
+          "default": 60,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "image": {
+          "description": "Container image to use for the server. This image will be pulled from the container registry and used to create the server's pod.",
+          "default": "mcp/fetch:latest",
+          "type": "string"
+        },
+        "pool": {
+          "description": "Name of the `MCPPool` this server belongs to. This will be used to determine in which pool the server is running, thus allowing the controller to manage the server's lifecycle based on the pool's specifications.",
+          "default": "default",
+          "type": "string"
+        },
+        "transport": {
+          "description": "The type of transport used by the server internally. This will be used to determine how the server communicates with the container and allow us to interact with it through. This field does not affect the server's external communication, which is only done through HTTP/SSE protocols.\n\nThe transport type can be either `stdio` or `sse`. The `stdio` transport type is used for standard input/output communication, while the `sse` transport type is used for server-sent events. The `sse` transport type requires a port to be specified.\n\nIf you're unsure which transport type to use, check the documentation for the image you're using. Most images will support both transport types, but some may have specific requirements or limitations.",
+          "default": {
+            "type": "stdio"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/MCPServerTransport"
+            }
+          ]
+        }
+      }
+    },
+    "MCPServerStatus": {
+      "description": "MCPServer status",
+      "type": "object",
+      "required": [
+        "currentConnections",
+        "phase",
+        "totalRequests"
+      ],
+      "properties": {
+        "conditions": {
+          "description": "Conditions observed on the server, following Kubernetes conditions pattern",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Condition"
+          }
+        },
+        "currentConnections": {
+          "description": "Number of current connections to the server",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "lastRequestAt": {
+          "description": "Time of the last received request",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "phase": {
+          "description": "Current phase of the server lifecycle",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MCPServerPhase"
+            }
+          ]
+        },
+        "startedAt": {
+          "description": "Time when the server was started",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "stoppedAt": {
+          "description": "Time when the server was stopped",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "totalRequests": {
+          "description": "Total number of requests processed by the server",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MCPServerTransport": {
+      "title": "MCPServer Transport Configuration",
+      "description": "Configuration for the MCP server transport layer",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "port": {
+          "description": "Port number for SSE transport, required when type is 'sse'",
+          "type": "integer"
+        },
+        "type": {
+          "description": "Transport type",
+          "type": "string",
+          "enum": [
+            "stdio",
+            "sse"
+          ]
+        }
+      }
+    },
+    "io.k8s.api.core.v1.ConfigMapKeySelector": {
+      "description": "Selects a key from a ConfigMap.",
+      "type": "object",
+      "required": [
+        "key",
+        "name"
+      ],
+      "properties": {
+        "key": {
+          "description": "The key to select.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+          "type": "string"
+        },
+        "optional": {
+          "description": "Specify whether the ConfigMap or its key must be defined",
+          "type": "boolean"
+        }
+      }
+    },
+    "io.k8s.api.core.v1.EnvVar": {
+      "description": "EnvVar represents an environment variable present in a Container.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "Name of the environment variable. Must be a C_IDENTIFIER.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Variable references $(VAR_NAME) are expanded using the previously defined environment variables in the container and any service environment variables. If a variable cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. \"$$(VAR_NAME)\" will produce the string literal \"$(VAR_NAME)\". Escaped references will never be expanded, regardless of whether the variable exists or not. Defaults to \"\".",
+          "type": "string"
+        },
+        "valueFrom": {
+          "description": "Source for the environment variable's value. Cannot be used if value is not empty.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.EnvVarSource"
+            }
+          ]
+        }
+      }
+    },
+    "io.k8s.api.core.v1.EnvVarSource": {
+      "description": "EnvVarSource represents a source for the value of an EnvVar.",
+      "type": "object",
+      "properties": {
+        "configMapKeyRef": {
+          "description": "Selects a key of a ConfigMap.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.ConfigMapKeySelector"
+            }
+          ]
+        },
+        "fieldRef": {
+          "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`, spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.ObjectFieldSelector"
+            }
+          ]
+        },
+        "resourceFieldRef": {
+          "description": "Selects a resource of the container: only resources limits and requests (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.ResourceFieldSelector"
+            }
+          ]
+        },
+        "secretKeyRef": {
+          "description": "Selects a key of a secret in the pod's namespace",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.SecretKeySelector"
+            }
+          ]
+        }
+      }
+    },
+    "io.k8s.api.core.v1.ObjectFieldSelector": {
+      "description": "ObjectFieldSelector selects an APIVersioned field of an object.",
+      "type": "object",
+      "required": [
+        "fieldPath"
+      ],
+      "properties": {
+        "apiVersion": {
+          "description": "Version of the schema the FieldPath is written in terms of, defaults to \"v1\".",
+          "type": "string"
+        },
+        "fieldPath": {
+          "description": "Path of the field to select in the specified API version.",
+          "type": "string"
+        }
+      }
+    },
+    "io.k8s.api.core.v1.ResourceFieldSelector": {
+      "description": "ResourceFieldSelector represents container resources (cpu, memory) and their output format",
+      "type": "object",
+      "required": [
+        "resource"
+      ],
+      "properties": {
+        "containerName": {
+          "description": "Container name: required for volumes, optional for env vars",
+          "type": "string"
+        },
+        "divisor": {
+          "description": "Specifies the output format of the exposed resources, defaults to \"1\"",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
+            }
+          ]
+        },
+        "resource": {
+          "description": "Required: resource to select",
+          "type": "string"
+        }
+      }
+    },
+    "io.k8s.api.core.v1.SecretKeySelector": {
+      "description": "SecretKeySelector selects a key of a Secret.",
+      "type": "object",
+      "required": [
+        "key",
+        "name"
+      ],
+      "properties": {
+        "key": {
+          "description": "The key of the secret to select from.  Must be a valid secret key.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+          "type": "string"
+        },
+        "optional": {
+          "description": "Specify whether the Secret or its key must be defined",
+          "type": "boolean"
+        }
+      }
+    },
+    "io.k8s.apimachinery.pkg.api.resource.Quantity": {
+      "description": "Quantity is a fixed-point representation of a number. It provides convenient marshaling/unmarshaling in JSON and YAML, in addition to String() and AsInt64() accessors.\n\nThe serialization format is:\n\n``` <quantity>        ::= <signedNumber><suffix>\n\n\t(Note that <suffix> may be empty, from the \"\" case in <decimalSI>.)\n\n<digit>           ::= 0 | 1 | ... | 9 <digits>          ::= <digit> | <digit><digits> <number>          ::= <digits> | <digits>.<digits> | <digits>. | .<digits> <sign>            ::= \"+\" | \"-\" <signedNumber>    ::= <number> | <sign><number> <suffix>          ::= <binarySI> | <decimalExponent> | <decimalSI> <binarySI>        ::= Ki | Mi | Gi | Ti | Pi | Ei\n\n\t(International System of units; See: http://physics.nist.gov/cuu/Units/binary.html)\n\n<decimalSI>       ::= m | \"\" | k | M | G | T | P | E\n\n\t(Note that 1024 = 1Ki but 1000 = 1k; I didn't choose the capitalization.)\n\n<decimalExponent> ::= \"e\" <signedNumber> | \"E\" <signedNumber> ```\n\nNo matter which of the three exponent forms is used, no quantity may represent a number greater than 2^63-1 in magnitude, nor may it have more than 3 decimal places. Numbers larger or more precise will be capped or rounded up. (E.g.: 0.1m will rounded up to 1m.) This may be extended in the future if we require larger or smaller quantities.\n\nWhen a Quantity is parsed from a string, it will remember the type of suffix it had, and will use the same type again when it is serialized.\n\nBefore serializing, Quantity will be put in \"canonical form\". This means that Exponent/suffix will be adjusted up or down (with a corresponding increase or decrease in Mantissa) such that:\n\n- No precision is lost - No fractional digits will be emitted - The exponent (or suffix) is as large as possible.\n\nThe sign will be omitted unless the number is negative.\n\nExamples:\n\n- 1.5 will be serialized as \"1500m\" - 1.5Gi will be serialized as \"1536Mi\"\n\nNote that the quantity will NEVER be internally represented by a floating point number. That is the whole point of this exercise.\n\nNon-canonical values will still parse as long as they are well formed, but will be re-emitted in their canonical form. (So always use canonical form, or don't diff.)\n\nThis format is intended to make it difficult to use these numbers without writing some sort of special handling code in the hopes that that will cause implementors to also use a fixed point implementation.",
+      "type": "string"
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.Condition": {
+      "description": "Condition contains details for one aspect of the current state of this API Resource.",
+      "type": "object",
+      "required": [
+        "lastTransitionTime",
+        "message",
+        "reason",
+        "status",
+        "type"
+      ],
+      "properties": {
+        "lastTransitionTime": {
+          "description": "lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time"
+            }
+          ]
+        },
+        "message": {
+          "description": "message is a human readable message indicating details about the transition. This may be an empty string.",
+          "type": "string"
+        },
+        "observedGeneration": {
+          "description": "observedGeneration represents the .metadata.generation that the condition was set based upon. For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date with respect to the current state of the instance.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "reason": {
+          "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition. Producers of specific condition types may define expected values and meanings for this field, and whether the values are considered a guaranteed API. The value should be a CamelCase string. This field may not be empty.",
+          "type": "string"
+        },
+        "status": {
+          "description": "status of the condition, one of True, False, Unknown.",
+          "type": "string"
+        },
+        "type": {
+          "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+          "type": "string"
+        }
+      }
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.Time": {
+      "description": "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

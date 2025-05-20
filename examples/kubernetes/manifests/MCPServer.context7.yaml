@@ -1,0 +1,10 @@
+apiVersion: nmcp.nwrx.io/v1
+kind: MCPServer
+metadata:
+  name: context7
+  namespace: default
+spec:
+  image: mcp/context7:latest
+  pool: default
+  transport: 
+    type: stdio

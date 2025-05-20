@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCPPool",
+  "description": "Auto-generated derived type for MCPPoolSpec via `CustomResource`",
+  "type": "object",
+  "required": [
+    "spec"
+  ],
+  "properties": {
+    "spec": {
+      "$ref": "#/definitions/MCPPoolSpec"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MCPPoolStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "MCPPoolSpec": {
+      "description": "McpPool custom resource definition",
+      "type": "object",
+      "properties": {
+        "defaultIdleTimeout": {
+          "description": "The default time in seconds that a server is allowed to run without receiving any requests before it's terminated. This helps to conserve resources by shutting down idle servers.",
+          "default": 60,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "defaultResources": {
+          "description": "The default resource requirements for each server in the pool. This will be used to determine the resource limits and requests for each server's pod. This is to ensure that each server has the necessary resources to run efficiently and effectively. This is also to prevent the pool from overwhelming the system with too many servers at once.",
+          "default": {},
+          "allOf": [
+            {
+              "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements"
+            }
+          ]
+        },
+        "maxServersActive": {
+          "description": "The maxcimum number of concurrent active servers that can be created in the pool. After this limit is reached, the overflow servers will be marked as \"waiting\" and no Pod or Service resources will be created for them until Pod and Service resources are deleted by the operator.",
+          "default": 100,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maxServersLimit": {
+          "description": "Maximum amount of MCPServer resources that can be managed by this MCPPool. After this limit is reached, the overflow servers will be marked as \"ignored\" and no Pod or Service resources will be created for them until older MCPServer resources are deleted.\n\nTODO: Deprecated in favor of `maxActiveServers`.",
+          "default": 100,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MCPPoolStatus": {
+      "description": "Status of the MCPPool custom resource",
+      "type": "object",
+      "required": [
+        "activeServersCount",
+        "managedServersCount",
+        "pendingServersCount",
+        "totalServersCount",
+        "unmanagedServersCount"
+      ],
+      "properties": {
+        "activeServersCount": {
+          "description": "Number of servers currently in use (active) in the pool. Meaning that the server is running and has a pod and service created.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "managedServersCount": {
+          "description": "Number of servers that are currently managed by the MCPPool controller. Meaning that the server that do not overflow the max_servers_limit and are being managed by the MCPPool controller.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pendingServersCount": {
+          "description": "Number of servers waiting to be created in the pool. Meaning that the server is waiting for a pod and service to be created.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "totalServersCount": {
+          "description": "Total number of servers in the pool. This is the sum of all servers that are currently in use, waiting, ignored and managed by the MCPPool controller.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unmanagedServersCount": {
+          "description": "Number of servers that are currently unmanaged by the pool. Meaning that the they overflow the max_servers_limit and are not being managed by the MCPPool controller.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "io.k8s.api.core.v1.ResourceClaim": {
+      "description": "ResourceClaim references one entry in PodSpec.ResourceClaims.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "Name must match the name of one entry in pod.spec.resourceClaims of the Pod where this field is used. It makes that resource available inside a container.",
+          "type": "string"
+        }
+      }
+    },
+    "io.k8s.api.core.v1.ResourceRequirements": {
+      "description": "ResourceRequirements describes the compute resource requirements.",
+      "type": "object",
+      "properties": {
+        "claims": {
+          "description": "Claims lists the names of resources, defined in spec.resourceClaims, that are used by this container.\n\nThis is an alpha field and requires enabling the DynamicResourceAllocation feature gate.\n\nThis field is immutable. It can only be set for containers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/io.k8s.api.core.v1.ResourceClaim"
+          }
+        },
+        "limits": {
+          "description": "Limits describes the maximum amount of compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
+          }
+        },
+        "requests": {
+          "description": "Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.api.resource.Quantity"
+          }
+        }
+      }
+    },
+    "io.k8s.apimachinery.pkg.api.resource.Quantity": {
+      "description": "Quantity is a fixed-point representation of a number. It provides convenient marshaling/unmarshaling in JSON and YAML, in addition to String() and AsInt64() accessors.\n\nThe serialization format is:\n\n``` <quantity>        ::= <signedNumber><suffix>\n\n\t(Note that <suffix> may be empty, from the \"\" case in <decimalSI>.)\n\n<digit>           ::= 0 | 1 | ... | 9 <digits>          ::= <digit> | <digit><digits> <number>          ::= <digits> | <digits>.<digits> | <digits>. | .<digits> <sign>            ::= \"+\" | \"-\" <signedNumber>    ::= <number> | <sign><number> <suffix>          ::= <binarySI> | <decimalExponent> | <decimalSI> <binarySI>        ::= Ki | Mi | Gi | Ti | Pi | Ei\n\n\t(International System of units; See: http://physics.nist.gov/cuu/Units/binary.html)\n\n<decimalSI>       ::= m | \"\" | k | M | G | T | P | E\n\n\t(Note that 1024 = 1Ki but 1000 = 1k; I didn't choose the capitalization.)\n\n<decimalExponent> ::= \"e\" <signedNumber> | \"E\" <signedNumber> ```\n\nNo matter which of the three exponent forms is used, no quantity may represent a number greater than 2^63-1 in magnitude, nor may it have more than 3 decimal places. Numbers larger or more precise will be capped or rounded up. (E.g.: 0.1m will rounded up to 1m.) This may be extended in the future if we require larger or smaller quantities.\n\nWhen a Quantity is parsed from a string, it will remember the type of suffix it had, and will use the same type again when it is serialized.\n\nBefore serializing, Quantity will be put in \"canonical form\". This means that Exponent/suffix will be adjusted up or down (with a corresponding increase or decrease in Mantissa) such that:\n\n- No precision is lost - No fractional digits will be emitted - The exponent (or suffix) is as large as possible.\n\nThe sign will be omitted unless the number is negative.\n\nExamples:\n\n- 1.5 will be serialized as \"1500m\" - 1.5Gi will be serialized as \"1536Mi\"\n\nNote that the quantity will NEVER be internally represented by a floating point number. That is the whole point of this exercise.\n\nNon-canonical values will still parse as long as they are well formed, but will be re-emitted in their canonical form. (So always use canonical form, or don't diff.)\n\nThis format is intended to make it difficult to use these numbers without writing some sort of special handling code in the hopes that that will cause implementors to also use a fixed point implementation.",
+      "type": "string"
+    }
+  }
+}

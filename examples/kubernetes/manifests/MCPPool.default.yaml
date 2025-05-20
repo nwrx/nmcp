@@ -1,0 +1,8 @@
+apiVersion: nmcp.nwrx.io/v1
+kind: MCPPool
+metadata:
+  name: default
+  namespace: default
+spec:
+  maxServersLimit: 80
+  maxServersActive: 100
