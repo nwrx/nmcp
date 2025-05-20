@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nmcp-controller
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nmcp-controller
+rules:
+# Allow operations on core K8s resources
+- apiGroups: [""]
+  resources: ["services", "pods", "pods/log", "pods/exec", "events", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Allow operations on deployment resources
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Allow operations on the custom resources (MCPServers and MCPPools)
+- apiGroups: ["nmcp.nwrx.io"]
+  resources: ["mcpservers", "mcppools"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+# Allow operations on MCPServers and MCPPools status subresource
+- apiGroups: ["nmcp.nwrx.io"]
+  resources: ["mcpservers/status", "mcppools/status"]
+  verbs: ["get", "update", "patch"]
+# Allow access to the metrics API
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nmcp-controller
+subjects:
+- kind: ServiceAccount
+  name: nmcp-controller
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: nmcp-controller
+  apiGroup: rbac.authorization.k8s.io

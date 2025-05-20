@@ -1,0 +1,244 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mcpservers.nmcp.nwrx.io
+spec:
+  group: nmcp.nwrx.io
+  names:
+    categories: []
+    kind: MCPServer
+    plural: mcpservers
+    shortNames:
+    - mcp
+    singular: mcpserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: '.spec.pool'
+      name: Pool
+      type: string
+    - jsonPath: '.metadata.creationTimestamp'
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for MCPServerSpec via `CustomResource`
+        properties:
+          spec:
+            description: MCPServer custom resource definition
+            properties:
+              args:
+                description: The arguments to pass to the server's command. This will be used to configure the server's runtime behavior, such as specifying the configuration file to use or enabling/disabling certain features.
+                items:
+                  type: string
+                nullable: true
+                type: array
+              command:
+                description: The command to run the server. This will be used to start the server's process inside the container.
+                items:
+                  type: string
+                nullable: true
+                type: array
+              env:
+                default: []
+                items:
+                  description: EnvVar represents an environment variable present in a Container.
+                  properties:
+                    name:
+                      description: Name of the environment variable. Must be a C_IDENTIFIER.
+                      type: string
+                    value:
+                      description: 'Variable references $(VAR_NAME) are expanded using the previously defined environment variables in the container and any service environment variables. If a variable cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless of whether the variable exists or not. Defaults to "".'
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              description: 'Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key must be defined
+                              type: boolean
+                          required:
+                          - key
+                          - name
+                          type: object
+                        fieldRef:
+                          description: 'Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels[''<KEY>'']`, `metadata.annotations[''<KEY>'']`, spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.'
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                        resourceFieldRef:
+                          description: 'Selects a resource of the container: only resources limits and requests (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.'
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes, optional for env vars'
+                              type: string
+                            divisor:
+                              description: Specifies the output format of the exposed resources, defaults to "1"
+                              type: string
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must be a valid secret key.
+                              type: string
+                            name:
+                              description: 'Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must be defined
+                              type: boolean
+                          required:
+                          - key
+                          - name
+                          type: object
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              idleTimeout:
+                default: 60
+                description: The time in seconds that a server is allowed to run without receiving any requests before it's terminated. This helps to conserve resources by shutting down idle servers.
+                format: uint32
+                minimum: 0.0
+                type: integer
+              image:
+                default: mcp/fetch:latest
+                description: Container image to use for the server. This image will be pulled from the container registry and used to create the server's pod.
+                type: string
+              pool:
+                default: default
+                description: Name of the `MCPPool` this server belongs to. This will be used to determine in which pool the server is running, thus allowing the controller to manage the server's lifecycle based on the pool's specifications.
+                type: string
+              transport:
+                default:
+                  type: stdio
+                description: |-
+                  The type of transport used by the server internally. This will be used to determine how the server communicates with the container and allow us to interact with it through. This field does not affect the server's external communication, which is only done through HTTP/SSE protocols.
+
+                  The transport type can be either `stdio` or `sse`. The `stdio` transport type is used for standard input/output communication, while the `sse` transport type is used for server-sent events. The `sse` transport type requires a port to be specified.
+
+                  If you're unsure which transport type to use, check the documentation for the image you're using. Most images will support both transport types, but some may have specific requirements or limitations.
+                properties:
+                  port:
+                    description: Port number for SSE transport, required when type is 'sse'
+                    type: integer
+                  type:
+                    description: Transport type
+                    enum:
+                    - stdio
+                    - sse
+                    type: string
+                required:
+                - type
+                title: MCPServer Transport Configuration
+                type: object
+            type: object
+          status:
+            description: MCPServer status
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                description: Conditions observed on the server, following Kubernetes conditions pattern
+                items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human readable message indicating details about the transition. This may be an empty string.
+                      type: string
+                    observedGeneration:
+                      description: observedGeneration represents the .metadata.generation that the condition was set based upon. For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: reason contains a programmatic identifier indicating the reason for the condition's last transition. Producers of specific condition types may define expected values and meanings for this field, and whether the values are considered a guaranteed API. The value should be a CamelCase string. This field may not be empty.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              currentConnections:
+                description: Number of current connections to the server
+                format: uint32
+                minimum: 0.0
+                type: integer
+              lastRequestAt:
+                description: Time of the last received request
+                format: date-time
+                nullable: true
+                type: string
+              phase:
+                description: Current phase of the server lifecycle
+                enum:
+                - Idle
+                - Requested
+                - Running
+                - Starting
+                - Stopping
+                - Failed
+                type: string
+              startedAt:
+                description: Time when the server was started
+                format: date-time
+                nullable: true
+                type: string
+              stoppedAt:
+                description: Time when the server was stopped
+                format: date-time
+                nullable: true
+                type: string
+              totalRequests:
+                description: Total number of requests processed by the server
+                format: uint32
+                minimum: 0.0
+                type: integer
+            required:
+            - currentConnections
+            - phase
+            - totalRequests
+            type: object
+        required:
+        - spec
+        title: MCPServer
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
