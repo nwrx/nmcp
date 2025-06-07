@@ -1,9 +1,10 @@
+use super::status::PodStatus;
 use super::Controller;
 use super::ResourceManager;
 use super::MCP_SERVER_FINALIZER;
 use crate::Error;
 use crate::MCPPool;
-use crate::{ErrorInner, IntoResource, MCPServer, Result};
+use crate::{IntoResource, MCPServer, Result};
 use crate::{MCPServerConditionType as Condition, MCPServerPhase as Phase};
 use chrono::Utc;
 use futures::StreamExt;
@@ -15,16 +16,6 @@ use kube::runtime::{watcher::Config, Controller as RuntimeController};
 use kube::{Api, ResourceExt};
 use std::sync::Arc;
 use std::time::Duration;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum PodStatus {
-    Running,
-    Pending,
-    Succeeded,
-    Failed,
-    Unknown,
-    NotFound,
-}
 
 #[derive(Debug)]
 struct ReconcileReportError(Error);
@@ -44,33 +35,10 @@ impl From<ReconcileReportError> for Error {
 }
 
 impl Controller {
-    /// Get the pod status for the given `MCPServer`.
-    pub async fn get_server_pod_status(&self, server: &MCPServer) -> Result<PodStatus> {
-        let pod = <MCPServer as IntoResource<v1::Pod>>::get_resource(server, &self.client).await;
-        match pod {
-            Ok(pod) => {
-                let phase = pod.status.unwrap_or_default().phase.unwrap_or_default();
-                match phase.as_str() {
-                    "Running" => Ok(PodStatus::Running),
-                    "Pending" => Ok(PodStatus::Pending),
-                    "Succeeded" => Ok(PodStatus::Succeeded),
-                    "Failed" => Ok(PodStatus::Failed),
-                    _ => Ok(PodStatus::Unknown),
-                }
-            }
-            Err(error) => match error.source() {
-                ErrorInner::KubeError(kube::Error::Api(error)) if error.code == 404 => {
-                    Ok(PodStatus::NotFound)
-                }
-                _ => Err(error),
-            },
-        }
-    }
-
     /// Start the server pod and service for the given MCPServer.
     #[tracing::instrument(name = "EnsureUp", skip_all)]
     pub async fn ensure_server_is_up(&self, server: &MCPServer) -> Result<()> {
-        match self.get_server_pod_status(server).await? {
+        match server.get_server_pod_status(&self.client).await? {
             PodStatus::Running => {}
             PodStatus::NotFound => {
                 let _ = <MCPServer as IntoResource<v1::Pod>>::patch_resource(server, &self.client)
@@ -106,7 +74,7 @@ impl Controller {
         let phase = server.get_status(&self.client).await?.phase;
 
         // --- Track the pod status and delete it if necessary.
-        match self.get_server_pod_status(server).await? {
+        match server.get_server_pod_status(&self.client).await? {
             PodStatus::NotFound => {
                 if phase != Phase::Idle {
                     let condition = Condition::PodTerminated;

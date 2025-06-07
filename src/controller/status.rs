@@ -1,11 +1,22 @@
-use super::ResourceManager;
-use crate::{Error, MCPServer, Result};
+use super::{IntoResource, ResourceManager};
+use crate::{ErrorInner, MCPServer, Result};
 use crate::{MCPServerConditionType as Condition, MCPServerPhase as Phase};
 use chrono::Utc;
+use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1;
 use kube::Client;
 use std::time::Duration;
 use tokio::time;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PodStatus {
+    Running,
+    Pending,
+    Succeeded,
+    Failed,
+    Unknown,
+    NotFound,
+}
 
 impl MCPServer {
     /// Sets the phase of the `MCPServer` resource.
@@ -102,30 +113,51 @@ impl MCPServer {
         self.patch_status(client, status).await
     }
 
+    /// Get the pod status for the given `MCPServer`.
+    pub async fn get_server_pod_status(&self, client: &Client) -> Result<PodStatus> {
+        let pod = <Self as IntoResource<Pod>>::get_resource(self, client).await;
+        match pod {
+            Ok(pod) => {
+                let phase = pod.status.unwrap_or_default().phase.unwrap_or_default();
+                match phase.as_str() {
+                    "Running" => Ok(PodStatus::Running),
+                    "Pending" => Ok(PodStatus::Pending),
+                    "Succeeded" => Ok(PodStatus::Succeeded),
+                    "Failed" => Ok(PodStatus::Failed),
+                    _ => Ok(PodStatus::Unknown),
+                }
+            }
+            Err(error) => match error.source() {
+                ErrorInner::KubeError(kube::Error::Api(error)) if error.code == 404 => {
+                    Ok(PodStatus::NotFound)
+                }
+                _ => Err(error),
+            },
+        }
+    }
+
     /// Requests the server to start.
+    #[tracing::instrument(name = "RequestServerUp", skip_all)]
     pub async fn request_server_up(&self, client: &Client) -> Result<&Self> {
         loop {
-            match self.get_status(client).await?.phase {
-                Phase::Idle => {
-                    tracing::debug!("Server is idle, requesting start");
-                    let condition = Condition::Requested;
-                    let _ = self.set_server_status(client, condition).await?;
-                }
-                Phase::Stopping => {
-                    tracing::debug!("Server is stopping, requesting start");
-                    let condition = Condition::Requested;
-                    let _ = self.set_server_status(client, condition).await?;
-                }
-                Phase::Failed => {
-                    tracing::debug!("Server is in a failed state, cannot start");
-                    return Err(Error::generic("Server is in an error state".to_string()))?;
-                }
-                Phase::Running => {
+            match self.get_server_pod_status(client).await {
+                Ok(PodStatus::Running) => {
                     return Ok(self);
                 }
-                _ => {
-                    let duration = Duration::from_millis(100);
-                    time::sleep(duration).await;
+                Ok(PodStatus::Pending) => {
+                    time::sleep(Duration::from_secs(1)).await;
+                }
+                Ok(
+                    PodStatus::NotFound
+                    | PodStatus::Failed
+                    | PodStatus::Succeeded
+                    | PodStatus::Unknown,
+                ) => {
+                    let _ = self.set_server_status(client, Condition::Requested).await?;
+                    time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(error) => {
+                    return Err(error);
                 }
             }
         }
