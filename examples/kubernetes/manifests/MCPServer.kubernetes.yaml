@@ -1,10 +1,11 @@
 apiVersion: nmcp.nwrx.io/v1
 kind: MCPServer
 metadata:
-  name: context7
+  name: kubernetes
   namespace: default
 spec:
-  image: mcp/context7:latest
+  image: mcp/kubernetes:latest
   pool: default
+  idleTimeout: 60
   transport: 
     type: stdio

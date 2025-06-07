@@ -5,7 +5,8 @@ metadata:
   labels:
     app: nmcp-operator
 spec:
-  replicas: 1
+  # We will manually scale this deployment to 1 when we need to test the gateway.
+  replicas: 0
   selector:
     matchLabels:
       app: nmcp-operator

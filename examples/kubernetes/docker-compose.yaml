@@ -50,14 +50,6 @@ services:
     networks:
       - k3s-net
 
-  inspector:
-    image: mcp/inspector:latest
-    container_name: inspector
-    ports:
-      - 5173:5173
-    networks:
-      - k3s-net
-
 networks:
   k3s-net:
 
