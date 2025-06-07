@@ -3,6 +3,8 @@ name = "nmcp"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+homepage = "https://github.com/nwrx/nmcp"
+description = "A Kubernetes operator for managing Model Context Protocol (MCP) servers in Kubernetes environments."
 authors = ["Stanley Horwood <stanley.horwood@nanoworks.io>"]
 
 [profile.release]
