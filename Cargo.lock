@@ -1724,7 +1724,6 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-client",
- "once_cell",
  "rmcp",
  "schemars",
  "serde",
