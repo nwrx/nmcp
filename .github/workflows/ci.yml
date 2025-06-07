@@ -81,7 +81,7 @@ jobs:
       - id: changelog
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
         run: 
-          CHANGELOG=$(nix develop --command git-cliff)
+          CHANGELOG=$(nix develop --command git-cliff --current --unreleased)
           echo "changelog=${CHANGELOG}" >> $GITHUB_OUTPUT
 
       - uses: svenstaro/upload-release-action@v2
