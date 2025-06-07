@@ -4,7 +4,7 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// McpPool custom resource definition
+/// `McpPool` custom resource definition
 #[derive(CustomResource, Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[kube(
     group = "nmcp.nwrx.io",
@@ -21,9 +21,9 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "camelCase")]
 pub struct MCPPoolSpec {
-    /// Maximum amount of MCPServer resources that can be managed by this MCPPool. After
+    /// Maximum amount of `MCPServer` resources that can be managed by this `MCPPool`. After
     /// this limit is reached, the overflow servers will be marked as "ignored" and no Pod
-    /// or Service resources will be created for them until older MCPServer resources are
+    /// or Service resources will be created for them until older `MCPServer` resources are
     /// deleted.
     ///
     /// TODO: Deprecated in favor of `maxActiveServers`.
@@ -37,6 +37,12 @@ pub struct MCPPoolSpec {
     #[serde(default = "default_max_servers")]
     pub max_servers_active: u32,
 
+    /// The default time in seconds that a server is allowed to run without receiving
+    /// any requests before it's terminated. This helps to conserve resources by
+    /// shutting down idle servers.
+    #[serde(default = "default_idle_timeout")]
+    pub default_idle_timeout: u32,
+
     /// The default resource requirements for each server in the pool. This will be used to
     /// determine the resource limits and requests for each server's pod. This is to
     /// ensure that each server has the necessary resources to run efficiently and
@@ -44,12 +50,6 @@ pub struct MCPPoolSpec {
     /// too many servers at once.
     #[serde(default)]
     pub default_resources: v1::ResourceRequirements,
-
-    /// The default time in seconds that a server is allowed to run without receiving
-    /// any requests before it's terminated. This helps to conserve resources by
-    /// shutting down idle servers.
-    #[serde(default = "default_idle_timeout")]
-    pub default_idle_timeout: u32,
 }
 
 /// Default maximum servers
@@ -67,8 +67,8 @@ impl Default for MCPPoolSpec {
         Self {
             max_servers_limit: default_max_servers(),
             max_servers_active: default_max_servers(),
-            default_resources: v1::ResourceRequirements::default(),
             default_idle_timeout: default_idle_timeout(),
+            default_resources: v1::ResourceRequirements::default(),
         }
     }
 }
@@ -85,7 +85,7 @@ mod tests {
         assert_eq!(crd.spec.names.plural, "mcppools");
         assert_eq!(crd.spec.names.singular, Some("mcppool".to_string()));
         assert_eq!(crd.spec.group, "nmcp.nwrx.io");
-        assert_eq!(crd.spec.versions[0].name, "v1");
+        assert_eq!(crd.spec.versions.first().unwrap().name, "v1");
     }
 
     #[test]
@@ -149,12 +149,12 @@ mod tests {
         use std::collections::BTreeMap;
 
         let mut limits = BTreeMap::new();
-        limits.insert("cpu".to_string(), Quantity("500m".to_string()));
-        limits.insert("memory".to_string(), Quantity("512Mi".to_string()));
+        let _ = limits.insert("cpu".to_string(), Quantity("500m".to_string()));
+        let _ = limits.insert("memory".to_string(), Quantity("512Mi".to_string()));
 
         let mut requests = BTreeMap::new();
-        requests.insert("cpu".to_string(), Quantity("100m".to_string()));
-        requests.insert("memory".to_string(), Quantity("256Mi".to_string()));
+        let _ = requests.insert("cpu".to_string(), Quantity("100m".to_string()));
+        let _ = requests.insert("memory".to_string(), Quantity("256Mi".to_string()));
 
         let pool = MCPPool {
             metadata: kube::core::ObjectMeta {

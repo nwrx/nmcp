@@ -1,8 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Status of the MCPPool custom resource
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, Default)]
+/// Status of the `MCPPool` custom resource
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MCPPoolStatus {
     /// Number of servers currently in use (active) in the pool. Meaning
@@ -14,17 +14,17 @@ pub struct MCPPoolStatus {
     pub pending_servers_count: u32,
 
     /// Number of servers that are currently unmanaged by the pool. Meaning
-    /// that the they overflow the max_servers_limit and are not being managed
-    /// by the MCPPool controller.
+    /// that the they overflow the `max_servers_limit` and are not being managed
+    /// by the `MCPPool` controller.
     pub unmanaged_servers_count: u32,
 
-    /// Number of servers that are currently managed by the MCPPool controller.
-    /// Meaning that the server that do not overflow the max_servers_limit
-    /// and are being managed by the MCPPool controller.
+    /// Number of servers that are currently managed by the `MCPPool` controller.
+    /// Meaning that the server that do not overflow the `max_servers_limit`
+    /// and are being managed by the `MCPPool` controller.
     pub managed_servers_count: u32,
 
     /// Total number of servers in the pool. This is the sum of all servers
-    /// that are currently in use, waiting, ignored and managed by the MCPPool
+    /// that are currently in use, waiting, ignored and managed by the `MCPPool`
     /// controller.
     pub total_servers_count: u32,
 }

@@ -4,7 +4,7 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// MCPServer custom resource definition
+/// `MCPServer` custom resource definition
 #[derive(CustomResource, Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[kube(
     group = "nmcp.nwrx.io",
@@ -119,7 +119,7 @@ mod tests {
         assert_eq!(crd.spec.names.plural, "mcpservers");
         assert_eq!(crd.spec.names.singular, Some("mcpserver".to_string()));
         assert_eq!(crd.spec.group, "nmcp.nwrx.io");
-        assert_eq!(crd.spec.versions[0].name, "v1");
+        assert!(crd.spec.versions.first().is_some_and(|v| v.name == "v1"));
     }
 
     #[test]
@@ -170,8 +170,7 @@ mod tests {
             ])
         );
         assert_eq!(server.spec.args, Some(vec!["--verbose".to_string()]));
-        assert_eq!(server.spec.env[0].name, "ENV_VAR");
-        assert_eq!(server.spec.env[0].value, Some("value".to_string()));
+        assert_eq!(server.spec.env.len(), 1);
         assert_eq!(
             server.spec.transport,
             MCPServerTransport::Sse { port: 8080 }

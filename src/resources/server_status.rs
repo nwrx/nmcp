@@ -5,8 +5,8 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// MCPServerPhase represents the current lifecycle phase of the server
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema, PartialEq)]
+/// `MCPServerPhase` represents the current lifecycle phase of the server
+#[derive(Debug, Copy, Clone, Default, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub enum MCPServerPhase {
     /// Server is not running and has no traffic
@@ -34,9 +34,9 @@ pub enum MCPServerPhase {
     Failed,
 }
 
-/// MCPServerConditionType follows Kubernetes condition pattern
+/// `MCPServerConditionType` follows Kubernetes condition pattern
 /// Each condition has a type that represents a specific aspect of the resource's state
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub enum MCPServerConditionType {
     /// Primary condition indicating if the server is ready to process requests
@@ -93,39 +93,39 @@ impl MCPServerConditionType {
     /// Returns the message associated with the condition type.
     pub fn to_message(&self) -> String {
         match self {
-            MCPServerConditionType::Idle => "Server is pending".to_string(),
-            MCPServerConditionType::Requested => "Server has been requested".to_string(),
-            MCPServerConditionType::PodPending => "Pod is starting".to_string(),
-            MCPServerConditionType::PodRunning => "Pod is running".to_string(),
-            MCPServerConditionType::PodTerminating => "Pod is terminating".to_string(),
-            MCPServerConditionType::PodTerminated => "Pod has been terminated".to_string(),
-            MCPServerConditionType::PodTerminationFailed(error) => {
+            Self::Idle => "Server is pending".to_string(),
+            Self::Requested => "Server has been requested".to_string(),
+            Self::PodPending => "Pod is starting".to_string(),
+            Self::PodRunning => "Pod is running".to_string(),
+            Self::PodTerminating => "Pod is terminating".to_string(),
+            Self::PodTerminated => "Pod has been terminated".to_string(),
+            Self::PodTerminationFailed(error) => {
                 format!("Pod termination failed: {error}")
             }
-            MCPServerConditionType::PodFailed(error) => {
+            Self::PodFailed(error) => {
                 format!("Pod is in an error state: {error}")
             }
-            MCPServerConditionType::ServiceStarting => "Service is starting".to_string(),
-            MCPServerConditionType::ServiceReady => "Service is ready".to_string(),
-            MCPServerConditionType::ServiceTerminating => "Service is terminating".to_string(),
-            MCPServerConditionType::ServiceTerminated => "Service has been terminated".to_string(),
-            MCPServerConditionType::ServiceFailed(error) => {
+            Self::ServiceStarting => "Service is starting".to_string(),
+            Self::ServiceReady => "Service is ready".to_string(),
+            Self::ServiceTerminating => "Service is terminating".to_string(),
+            Self::ServiceTerminated => "Service has been terminated".to_string(),
+            Self::ServiceFailed(error) => {
                 format!("Service is in an error state: {error}")
             }
-            MCPServerConditionType::Running => "Service is ready".to_string(),
+            Self::Running => "Service is ready".to_string(),
         }
     }
 
     /// Returns the status associated with the condition type.
     pub fn to_status(&self) -> String {
         match self {
-            MCPServerConditionType::Running => "True".to_string(),
+            Self::Running => "True".to_string(),
             _ => "False".to_string(),
         }
     }
 }
 
-/// MCPServer status
+/// `MCPServer` status
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MCPServerStatus {

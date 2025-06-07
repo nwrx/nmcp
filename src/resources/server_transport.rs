@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
-/// MCPServer transport configuration
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
+/// `MCPServer` transport configuration
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum MCPServerTransport {
     /// Standard Input/Output (STDIO). This transport type is used for
@@ -40,7 +40,7 @@ impl JsonSchema for MCPServerTransport {
                 description: Some("Configuration for the MCP server transport layer".to_string()),
                 ..Default::default()
             })),
-            instance_type: Some(schemars::schema::InstanceType::Object.into()),
+            instance_type: Some(InstanceType::Object.into()),
             ..Default::default()
         };
 
@@ -71,13 +71,13 @@ impl JsonSchema for MCPServerTransport {
         schema_obj.object = Some(Box::new(schemars::schema::ObjectValidation {
             properties: {
                 let mut properties = schemars::Map::new();
-                properties.insert("type".to_string(), Schema::Object(type_schema));
-                properties.insert("port".to_string(), Schema::Object(port_schema));
+                let _ = properties.insert("type".to_string(), Schema::Object(type_schema));
+                let _ = properties.insert("port".to_string(), Schema::Object(port_schema));
                 properties
             },
             required: {
                 let mut required = BTreeSet::new();
-                required.insert("type".to_string());
+                let _ = required.insert("type".to_string());
                 required
             },
             ..Default::default()
@@ -91,16 +91,16 @@ impl MCPServerTransport {
     /// Get the type of transport as a string
     pub fn transport_type(&self) -> String {
         match self {
-            MCPServerTransport::Sse { .. } => "sse".to_string(),
-            MCPServerTransport::Stdio => "stdio".to_string(),
+            Self::Sse { .. } => "sse".to_string(),
+            Self::Stdio => "stdio".to_string(),
         }
     }
 
     /// Get the port for SSE transport, if applicable
     pub fn port(&self) -> Option<u16> {
         match self {
-            MCPServerTransport::Sse { port } => Some(*port),
-            MCPServerTransport::Stdio => None,
+            Self::Sse { port } => Some(*port),
+            Self::Stdio => None,
         }
     }
 }
@@ -108,8 +108,8 @@ impl MCPServerTransport {
 impl Display for MCPServerTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MCPServerTransport::Sse { port } => write!(f, "sse-{port}"),
-            MCPServerTransport::Stdio => write!(f, "stdio"),
+            Self::Sse { port } => write!(f, "sse-{port}"),
+            Self::Stdio => write!(f, "stdio"),
         }
     }
 }
