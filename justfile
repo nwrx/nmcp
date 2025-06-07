@@ -11,18 +11,6 @@ default:
 build:
     nix build .#default
 
-build-docker:
-    nix build .#dockerImage
-
-# Update the cargo version, create a new git tag, and push the changes
-release type='minor':
-    cargo release \
-        --no-publish \
-        --sign-commit \
-        --sign-tag \
-        --no-push \
-        {{type}}
-
 ##########################################
 
 # Start the Kubernetes cluster.
