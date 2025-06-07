@@ -6,6 +6,6 @@ metadata:
 spec:
   image: mcp/kubernetes:latest
   pool: default
-  idleTimeout: 60
+  idleTimeout: 10
   transport: 
     type: stdio
