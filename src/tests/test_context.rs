@@ -20,7 +20,7 @@ pub async fn get_test_context() -> TestContext {
     TEST_CONTEXT.get_or_init(TestContext::new).await.clone()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TestContext {
     kubeconfig: kube::config::Kubeconfig,
     container: Arc<ContainerAsync<K3s>>,
@@ -44,8 +44,8 @@ impl TestContext {
         // --- Create the CRDs.
         let api: Api<CustomResourceDefinition> = Api::all(client);
         let pp = PostParams::default();
-        api.create(&pp, &MCPServer::crd()).await.unwrap();
-        api.create(&pp, &MCPPool::crd()).await.unwrap();
+        let _ = api.create(&pp, &MCPServer::crd()).await.unwrap();
+        let _ = api.create(&pp, &MCPPool::crd()).await.unwrap();
 
         // --- Return the test context with it's associated kubeconfig.
         Self {
@@ -79,7 +79,8 @@ impl TestContext {
         let client = controller.get_client();
 
         let api = Api::<Namespace>::all(client);
-        api.create(&PostParams::default(), &namespace)
+        let _ = api
+            .create(&PostParams::default(), &namespace)
             .await
             .expect("Failed to create namespace");
 
@@ -87,7 +88,8 @@ impl TestContext {
         let result = r#fn(controller).await;
 
         // --- Clean up by deleting the namespace.
-        api.delete(&name, &DeleteParams::default())
+        let _ = api
+            .delete(&name, &DeleteParams::default())
             .await
             .expect("Failed to delete namespace");
 
