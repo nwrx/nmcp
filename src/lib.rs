@@ -1,6 +1,4 @@
 #![deny(warnings)]
-#![allow(unstable_features)]
-#![feature(backtrace_frames)]
 #![warn(
     clippy::all,
     clippy::doc_markdown,
