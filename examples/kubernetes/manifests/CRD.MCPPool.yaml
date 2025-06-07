@@ -29,7 +29,7 @@ spec:
         description: Auto-generated derived type for MCPPoolSpec via `CustomResource`
         properties:
           spec:
-            description: McpPool custom resource definition
+            description: '`McpPool` custom resource definition'
             properties:
               defaultIdleTimeout:
                 default: 60
@@ -80,7 +80,7 @@ spec:
               maxServersLimit:
                 default: 100
                 description: |-
-                  Maximum amount of MCPServer resources that can be managed by this MCPPool. After this limit is reached, the overflow servers will be marked as "ignored" and no Pod or Service resources will be created for them until older MCPServer resources are deleted.
+                  Maximum amount of `MCPServer` resources that can be managed by this `MCPPool`. After this limit is reached, the overflow servers will be marked as "ignored" and no Pod or Service resources will be created for them until older `MCPServer` resources are deleted.
 
                   TODO: Deprecated in favor of `maxActiveServers`.
                 format: uint32
@@ -88,7 +88,7 @@ spec:
                 type: integer
             type: object
           status:
-            description: Status of the MCPPool custom resource
+            description: Status of the `MCPPool` custom resource
             nullable: true
             properties:
               activeServersCount:
@@ -97,7 +97,7 @@ spec:
                 minimum: 0.0
                 type: integer
               managedServersCount:
-                description: Number of servers that are currently managed by the MCPPool controller. Meaning that the server that do not overflow the max_servers_limit and are being managed by the MCPPool controller.
+                description: Number of servers that are currently managed by the `MCPPool` controller. Meaning that the server that do not overflow the `max_servers_limit` and are being managed by the `MCPPool` controller.
                 format: uint32
                 minimum: 0.0
                 type: integer
@@ -107,12 +107,12 @@ spec:
                 minimum: 0.0
                 type: integer
               totalServersCount:
-                description: Total number of servers in the pool. This is the sum of all servers that are currently in use, waiting, ignored and managed by the MCPPool controller.
+                description: Total number of servers in the pool. This is the sum of all servers that are currently in use, waiting, ignored and managed by the `MCPPool` controller.
                 format: uint32
                 minimum: 0.0
                 type: integer
               unmanagedServersCount:
-                description: Number of servers that are currently unmanaged by the pool. Meaning that the they overflow the max_servers_limit and are not being managed by the MCPPool controller.
+                description: Number of servers that are currently unmanaged by the pool. Meaning that the they overflow the `max_servers_limit` and are not being managed by the `MCPPool` controller.
                 format: uint32
                 minimum: 0.0
                 type: integer

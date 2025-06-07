@@ -26,7 +26,7 @@ spec:
         description: Auto-generated derived type for MCPServerSpec via `CustomResource`
         properties:
           spec:
-            description: MCPServer custom resource definition
+            description: '`MCPServer` custom resource definition'
             properties:
               args:
                 description: The arguments to pass to the server's command. This will be used to configure the server's runtime behavior, such as specifying the configuration file to use or enabling/disabling certain features.
@@ -157,7 +157,7 @@ spec:
                 type: object
             type: object
           status:
-            description: MCPServer status
+            description: '`MCPServer` status'
             nullable: true
             properties:
               conditions:
