@@ -1,5 +1,6 @@
 export KUBECONFIG := `pwd`+"/examples/kubernetes/kubeconfig/kubeconfig.yaml"
 export DOCKER_BUILDKIT := "1"
+export RUST_BACKTRACE := "1"
 
 # Default recipe to display help
 default:
@@ -26,7 +27,7 @@ release type='minor':
 
 # Start the Kubernetes cluster.
 kube-start:
-    cd examples && docker-compose up --detach
+    cd examples/kubernetes && docker-compose up --detach
 
 # Setup and start the k8s dashboard
 kube-setup: kube-start
@@ -43,23 +44,30 @@ kube-setup: kube-start
         --all \
         --timeout=60s
 
-    # Apply the manifests
+kube-create-crd:
+    cargo run -- export -r server -t crd -f yaml > examples/kubernetes/manifests/CRD.MCPServer.yaml
+    cargo run -- export -r pool -t crd -f yaml > examples/kubernetes/manifests/CRD.MCPPool.yaml
+
+# Apply the manifests
+kube-apply:
     kubectl --kubeconfig="$KUBECONFIG" apply \
         --filename examples/kubernetes/manifests
 
 kube:
     @just kube-start
     @just kube-setup
+    @just kube-create-crd
+    @just kube-apply
 
 ##########################################
 
 # Start the operator
 operator:
-    cargo watch -s 'clear && cargo run -- operator'
+    cargo watch -s 'clear && cargo run -- operator --log-level trace --log-format detailed --show-backtrace'
 
 # Start the server
 gateway:
-    cargo watch -s 'clear && cargo run -- gateway --port 8080'
+    cargo watch -s 'clear && cargo run -- gateway --port 8080 --log-level trace --log-format detailed --show-backtrace'
 
 ##########################################
 
