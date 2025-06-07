@@ -80,7 +80,7 @@ jobs:
       # Generate a CHANGELOG.md file so we can use it in the release.
       - id: changelog
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-        run: 
+        run: |
           CHANGELOG=$(nix develop --command git-cliff --current --unreleased)
           echo "changelog=${CHANGELOG}" >> $GITHUB_OUTPUT
 
