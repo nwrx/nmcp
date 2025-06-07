@@ -1,27 +1,21 @@
-use super::{Controller, MCP_SERVER_OPERATOR_MANAGER};
+use super::ResourceManager;
 use crate::{Error, MCPServer, Result};
 use crate::{MCPServerConditionType as Condition, MCPServerPhase as Phase};
 use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1;
-use kube::api::{Patch, PatchParams};
-use kube::{Api, ResourceExt};
-use serde_json::json;
+use kube::Client;
+use std::time::Duration;
+use tokio::time;
 
-impl Controller {
-    /// Sets the phase of the MCPServer resource.
-    pub async fn set_server_status(&self, server: &MCPServer, condition: Condition) -> Result<()> {
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let mut status = server.status.clone().unwrap_or_default();
-        let old_phase = status.phase.clone();
+impl MCPServer {
+    /// Sets the phase of the `MCPServer` resource.
+    pub async fn set_server_status(&self, client: &Client, condition: Condition) -> Result<Self> {
+        let mut status = self.get_status(client).await?;
 
         // --- Abort early if the last condition is the same as the new one.
         if let Some(last_condition) = status.conditions.last() {
             if last_condition.type_ == condition.to_string() {
-                tracing::debug!(
-                    "Skipping MCPServer status update: last condition is the same as new one: '{}'",
-                    condition
-                );
-                return Ok(());
+                return Ok(self.clone());
             }
         }
 
@@ -29,7 +23,7 @@ impl Controller {
         status.conditions.push(v1::Condition {
             type_: condition.to_string(),
             last_transition_time: v1::Time(Utc::now()),
-            observed_generation: server.metadata.generation,
+            observed_generation: self.metadata.generation,
             reason: condition.to_message(),
             message: condition.to_message(),
             status: condition.to_status(),
@@ -58,6 +52,7 @@ impl Controller {
             // Error
             Condition::PodFailed(..) => Phase::Failed,
             Condition::ServiceFailed(..) => Phase::Failed,
+            Condition::PodTerminationFailed(_) => Phase::Failed,
 
             // Stopping
             Condition::PodTerminating => Phase::Stopping,
@@ -67,7 +62,6 @@ impl Controller {
 
             // Running
             Condition::Running => Phase::Running,
-            _ => status.phase,
         };
 
         // --- Set the last_request_at field to None if the condition is "Ready".
@@ -76,98 +70,64 @@ impl Controller {
         }
 
         // --- Patch the MCPServer resource with the new status
-        tracing::info!(
-            "Updating MCPServer status: {:?} -> {:?} ({:?})",
-            old_phase,
-            status.phase,
-            condition,
-        );
-        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                &server.name_any(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Merge(&json!({ "status": status })),
-            )
-            .await
-            .map_err(Error::from)?;
-
-        Ok(())
+        self.patch_status(client, status).await
     }
 
-    /// Cleanup the `conditions` field of the MCPServer resource.
-    pub async fn cleanup_server_conditions(&self, server: &MCPServer) -> Result<()> {
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let mut status = server.status.clone().unwrap_or_default();
+    /// Cleanup the `conditions` field of the `MCPServer` resource.
+    pub async fn cleanup_server_conditions(&self, client: &Client) -> Result<Self> {
+        let mut status = self.get_status(client).await?;
         status.conditions.clear();
-
-        // --- Patch the MCPServer resource with the new status
-        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                &server.name_any(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Merge(&json!({ "status": status })),
-            )
-            .await
-            .map_err(Error::from)?;
-
-        Ok(())
+        self.patch_status(client, status).await
     }
 
-    /// Register that an MCPServer resource has been requested.
-    pub async fn register_server_request(&self, server: &MCPServer) -> Result<()> {
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let mut status = server.status.clone().unwrap_or_default();
+    /// Register that an `MCPServer` resource has been requested.
+    pub async fn register_server_request(&self, client: &Client) -> Result<Self> {
+        let mut status = self.get_status(client).await?;
         status.last_request_at = Some(Utc::now());
         status.total_requests += 1;
-
-        // --- Update the MCPServer resource with the new status
-        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                &server.name_any(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Merge(&json!({ "status": status })),
-            )
-            .await
-            .map_err(Error::from)?;
-
-        Ok(())
+        self.patch_status(client, status).await
     }
 
     /// Register that an active connection has been established.
-    pub async fn register_server_connection(&self, server: &MCPServer) -> Result<()> {
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let mut status = server.status.clone().unwrap_or_default();
+    pub async fn register_server_connection(&self, client: &Client) -> Result<Self> {
+        let mut status = self.get_status(client).await?;
         status.current_connections += 1;
-
-        // --- Update the MCPServer resource with the new status
-        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                &server.name_any(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Merge(&json!({ "status": status })),
-            )
-            .await
-            .map_err(Error::from)?;
-
-        Ok(())
+        self.patch_status(client, status).await
     }
 
     /// Register that an active connection has been closed.
-    pub async fn unregister_server_connection(&self, server: &MCPServer) -> Result<()> {
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let mut status = server.status.clone().unwrap_or_default();
+    pub async fn unregister_server_connection(&self, client: &Client) -> Result<Self> {
+        let mut status = self.get_status(client).await?;
         status.current_connections -= 1;
+        self.patch_status(client, status).await
+    }
 
-        // --- Update the MCPServer resource with the new status
-        Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace())
-            .patch_status(
-                &server.name_any(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &Patch::Merge(&json!({ "status": status })),
-            )
-            .await
-            .map_err(Error::from)?;
-
-        Ok(())
+    /// Requests the server to start.
+    pub async fn request_server_up(&self, client: &Client) -> Result<&Self> {
+        loop {
+            match self.get_status(client).await?.phase {
+                Phase::Idle => {
+                    tracing::debug!("Server is idle, requesting start");
+                    let condition = Condition::Requested;
+                    let _ = self.set_server_status(client, condition).await?;
+                }
+                Phase::Stopping => {
+                    tracing::debug!("Server is stopping, requesting start");
+                    let condition = Condition::Requested;
+                    let _ = self.set_server_status(client, condition).await?;
+                }
+                Phase::Failed => {
+                    tracing::debug!("Server is in a failed state, cannot start");
+                    return Err(Error::generic("Server is in an error state".to_string()))?;
+                }
+                Phase::Running => {
+                    return Ok(self);
+                }
+                _ => {
+                    let duration = Duration::from_millis(100);
+                    time::sleep(duration).await;
+                }
+            }
+        }
     }
 }

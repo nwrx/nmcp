@@ -1,14 +1,13 @@
-use super::{Controller, MCP_SERVER_FINALIZER, MCP_SERVER_OPERATOR_MANAGER};
-use crate::{Error, MCPServer, Result};
+use super::Controller;
+use super::ResourceManager;
+use super::MCP_SERVER_FINALIZER;
+use crate::Error;
+use crate::MCPPool;
+use crate::{ErrorInner, IntoResource, MCPServer, Result};
 use crate::{MCPServerConditionType as Condition, MCPServerPhase as Phase};
-use crate::{MCPServerTransport, MCPServerTransportStdio, DEFAULT_POD_BUFFER_SIZE};
 use chrono::Utc;
 use futures::StreamExt;
 use k8s_openapi::api::core::v1;
-use k8s_openapi::api::core::v1::Pod;
-use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
-use kube::api::AttachParams;
-use kube::api::{ObjectMeta, Patch, PatchParams};
 use kube::runtime::controller::Action;
 use kube::runtime::finalizer;
 use kube::runtime::finalizer::Event;
@@ -16,9 +15,8 @@ use kube::runtime::{watcher::Config, Controller as RuntimeController};
 use kube::{Api, ResourceExt};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time::sleep;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PodStatus {
     Running,
     Pending,
@@ -28,214 +26,28 @@ pub enum PodStatus {
     NotFound,
 }
 
+#[derive(Debug)]
+struct ReconcileReportError(Error);
+
+impl std::fmt::Display for ReconcileReportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ReconcileReportError {}
+
+impl From<ReconcileReportError> for Error {
+    fn from(e: ReconcileReportError) -> Self {
+        e.0
+    }
+}
+
 impl Controller {
-    /// Creates a patch for the Pod resource based on the `MCPServer` spec.
-    async fn create_server_pod_patch(
-        &self,
-        server: &MCPServer,
-        mut pod: v1::Pod,
-    ) -> Patch<v1::Pod> {
-        let mut env = server.spec.env.clone();
-        env.push(v1::EnvVar {
-            name: "MCP_SERVER_NAME".to_string(),
-            value: Some(server.name_pod()),
-            ..Default::default()
-        });
-        env.push(v1::EnvVar {
-            name: "MCP_SERVER_UUID".to_string(),
-            value: server.metadata.uid.clone(),
-            ..Default::default()
-        });
-        env.push(v1::EnvVar {
-            name: "MCP_SERVER_POOL".to_string(),
-            value: Some(server.spec.pool.clone()),
-            ..Default::default()
-        });
-
-        // --- Create container ports if transport is "SSE"
-        let mut container_ports = Vec::new();
-        match server.spec.transport {
-            MCPServerTransport::Sse { port } => {
-                container_ports.push(v1::ContainerPort {
-                    name: Some("http".to_string()),
-                    container_port: port.into(),
-                    protocol: Some("TCP".to_string()),
-                    ..Default::default()
-                });
-            }
-            MCPServerTransport::Stdio => {
-                // No ports needed for stdio transport
-            }
-        }
-
-        // --- Create container
-        let container = v1::Container {
-            name: "server".to_string(),
-            image: Some(server.spec.image.clone()),
-            command: server.spec.command.clone(),
-            args: server.spec.args.clone(),
-            env: Some(env),
-            ports: Some(container_ports),
-            stdin: Some(true),
-            tty: Some(true),
-            // resources,
-            // security_context,
-            ..Default::default()
-        };
-
-        // Update pod metadata
-        pod.metadata = ObjectMeta {
-            name: Some(server.name_pod()),
-            namespace: Some(self.namespace.clone()),
-            labels: Some(server.labels()),
-            ..Default::default()
-        };
-
-        pod.spec = Some(v1::PodSpec {
-            containers: vec![container],
-            restart_policy: Some("Always".to_string()),
-            ..Default::default()
-        });
-
-        // Create the Patch<Pod> object and return it.
-        Patch::Apply(pod)
-    }
-
-    /// Create a Patch for the v1::Service resource based on the `MCPServer` spec.
-    async fn create_server_service_patch(
-        &self,
-        server: &MCPServer,
-        mut service: v1::Service,
-    ) -> Patch<v1::Service> {
-        let mut ports: Vec<v1::ServicePort> = Vec::new();
-        match server.spec.transport {
-            MCPServerTransport::Sse { port } => {
-                ports.push(v1::ServicePort {
-                    name: Some("http".to_string()),
-                    port: port.into(),
-                    target_port: Some(IntOrString::Int(port.into())),
-                    protocol: Some("TCP".to_string()),
-                    ..Default::default()
-                });
-            }
-            // No ports needed for stdio transport
-            MCPServerTransport::Stdio => {}
-        }
-
-        // Create service metadata
-        service.metadata = ObjectMeta {
-            name: Some(server.name_service()),
-            namespace: Some(self.namespace.clone()),
-            labels: Some(server.labels()),
-            ..Default::default()
-        };
-        service.spec = Some(v1::ServiceSpec {
-            selector: Some(server.labels()),
-            ports: Some(ports),
-            type_: Some("ClusterIP".to_string()),
-            ..v1::ServiceSpec::default()
-        });
-
-        // Create the Patch<v1::Service> object and return it.
-        Patch::Apply(service)
-    }
-
-    /// Create the v1::Pod resource for the `MCPServer`.
-    #[tracing::instrument(name = "PatchPod", skip_all, err)]
-    pub async fn patch_server_pod(&self, server: &MCPServer) -> Result<()> {
-        tracing::debug!("Creating pod {}", server.name_pod());
-        Api::<v1::Pod>::namespaced(self.get_client(), &self.get_namespace())
-            .patch(
-                &server.name_pod(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &self
-                    .create_server_pod_patch(server, Default::default())
-                    .await,
-            )
-            .await
-            .map_err(Error::from)?;
-        Ok(())
-    }
-
-    /// Create the v1::Service resource for the `MCPServer`.
-    #[tracing::instrument(name = "PatchService", skip_all, err)]
-    pub async fn patch_server_service(&self, server: &MCPServer) -> Result<()> {
-        if server.spec.transport == MCPServerTransport::Stdio {
-            return Ok(());
-        }
-        tracing::debug!("Creating service {}", server.name_service());
-        Api::<v1::Service>::namespaced(self.get_client(), &self.get_namespace())
-            .patch(
-                &server.name_service(),
-                &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                &self
-                    .create_server_service_patch(server, Default::default())
-                    .await,
-            )
-            .await
-            .map_err(Error::from)?;
-        Ok(())
-    }
-
-    /// Delete the `v1::Pod` resource for the `MCPServer`.
-    #[tracing::instrument(name = "DeletePod", skip_all, err)]
-    pub async fn delete_server_pod(&self, server: &MCPServer) -> Result<()> {
-        let result = Api::<v1::Pod>::namespaced(self.get_client(), &self.get_namespace())
-            .delete(&server.name_pod(), &Default::default())
-            .await
-            .map_err(Error::from);
-
-        // --- Check the result of the pod deletion.
-        match result {
-            Ok(..) => {
-                let condition = Condition::PodTerminating;
-                self.set_server_status(server, condition).await?;
-            }
-            Err(Error::KubeError(kube::Error::Api(error))) if error.code == 404 => {}
-            Err(error) => {
-                let message = format!("Failed to delete pod: {error}");
-                let condition = Condition::PodTerminationFailed(message);
-                self.set_server_status(server, condition).await?;
-                return Err(error);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Delete the `v1::Service` resource for the `MCPServer`.
-    #[tracing::instrument(name = "DeleteService", skip_all)]
-    pub async fn delete_server_service(&self, server: &MCPServer) -> Result<()> {
-        if server.spec.transport == MCPServerTransport::Stdio {
-            return Ok(());
-        }
-        Api::<v1::Service>::namespaced(self.get_client(), &self.get_namespace())
-            .delete(&server.name_service(), &Default::default())
-            .await
-            .map_err(Error::from)?;
-        Ok(())
-    }
-
-    /// Retrieves the Kubernetes Service associated with a given MCPServer.
-    #[tracing::instrument(name = "GetServerService", skip_all)]
-    pub async fn get_server_service(&self, server: &MCPServer) -> Result<v1::Service> {
-        Api::namespaced(self.get_client(), &self.get_namespace())
-            .get(&server.name_service())
-            .await
-            .map_err(Error::from)
-    }
-
-    /// Retrieves the Kubernetes Pod associated with a given MCPServer.
-    pub async fn get_server_pod(&self, server: &MCPServer) -> Result<v1::Pod> {
-        Api::<v1::Pod>::namespaced(self.get_client(), &self.get_namespace())
-            .get(&server.name_pod())
-            .await
-            .map_err(Error::from)
-    }
-
-    /// Get the pod status for the given MCPServer.
+    /// Get the pod status for the given `MCPServer`.
     pub async fn get_server_pod_status(&self, server: &MCPServer) -> Result<PodStatus> {
-        match self.get_server_pod(server).await {
+        let pod = <MCPServer as IntoResource<v1::Pod>>::get_resource(server, &self.client).await;
+        match pod {
             Ok(pod) => {
                 let phase = pod.status.unwrap_or_default().phase.unwrap_or_default();
                 match phase.as_str() {
@@ -246,177 +58,82 @@ impl Controller {
                     _ => Ok(PodStatus::Unknown),
                 }
             }
-            Err(Error::KubeError(kube::Error::Api(error))) if error.code == 404 => {
-                Ok(PodStatus::NotFound)
-            }
-            Err(error) => Err(error),
+            Err(error) => match error.source() {
+                ErrorInner::KubeError(kube::Error::Api(error)) if error.code == 404 => {
+                    Ok(PodStatus::NotFound)
+                }
+                _ => Err(error),
+            },
         }
     }
 
     /// Start the server pod and service for the given MCPServer.
-    #[tracing::instrument(name = "Up", skip_all)]
+    #[tracing::instrument(name = "EnsureUp", skip_all)]
     pub async fn ensure_server_is_up(&self, server: &MCPServer) -> Result<()> {
-        tracing::debug!("Ensuring server is up {}", server.name_any());
-
-        // --- Check if the server is already running.
         match self.get_server_pod_status(server).await? {
-            PodStatus::Running => {
-                tracing::debug!("Server is already running");
-            }
+            PodStatus::Running => {}
             PodStatus::NotFound => {
-                self.patch_server_pod(server).await?;
+                let _ = <MCPServer as IntoResource<v1::Pod>>::patch_resource(server, &self.client)
+                    .await?;
             }
             PodStatus::Pending => {
-                tracing::info!("Server Pod is pending");
                 let condition = Condition::PodPending;
-                self.set_server_status(server, condition).await?;
+                let _ = server.set_server_status(&self.client, condition).await?;
             }
             PodStatus::Succeeded => {
-                tracing::info!("Server Pod Succeeded");
                 let condition = Condition::PodTerminated;
-                self.set_server_status(server, condition).await?;
+                let _ = server.set_server_status(&self.client, condition).await?;
             }
             PodStatus::Failed => {
-                tracing::error!("Server Pod is in an error state");
                 let condition = Condition::PodFailed("Pod is in an error state".to_string());
-                self.set_server_status(server, condition).await?;
+                let _ = server.set_server_status(&self.client, condition).await?;
             }
             PodStatus::Unknown => {
-                tracing::error!("Server Pod is in an unknown state");
                 let condition = Condition::PodFailed("Pod is in an unknown state".to_string());
-                self.set_server_status(server, condition).await?;
+                let _ = server.set_server_status(&self.client, condition).await?;
             }
         }
         // self.start_server_service(server).await?;
-
-        self.set_server_status(server, Condition::Running).await?;
-        Ok(())
+        server
+            .set_server_status(&self.client, Condition::Running)
+            .await
+            .map(|_| ())
     }
 
     /// Stop the server pod and service for the given MCPServer.
-    #[tracing::instrument(name = "Shutdown", skip_all, err)]
+    #[tracing::instrument(name = "EnsureDown", skip_all, err)]
     pub async fn ensure_server_is_down(&self, server: &MCPServer) -> Result<()> {
-        tracing::debug!("Ensuring server is down");
-        let server = self.get_server_by_name(&server.name_any()).await?;
-        let phase = server.status.clone().unwrap().phase;
+        let phase = server.get_status(&self.client).await?.phase;
 
         // --- Track the pod status and delete it if necessary.
-        match self.get_server_pod_status(&server).await? {
+        match self.get_server_pod_status(server).await? {
             PodStatus::NotFound => {
-                tracing::debug!("Pod not found, nothing to do");
                 if phase != Phase::Idle {
                     let condition = Condition::PodTerminated;
-                    self.set_server_status(&server, condition).await?;
+                    let _ = server.set_server_status(&self.client, condition).await?;
                 }
             }
             _ => {
-                tracing::debug!("Pod exists, deleting");
-                self.delete_server_pod(&server).await?;
+                <MCPServer as IntoResource<v1::Pod>>::delete_resource(server, &self.client).await?;
                 let condition = Condition::PodTerminating;
-                self.set_server_status(&server, condition).await?;
+                let _ = server.set_server_status(&self.client, condition).await?;
             }
         }
 
         // --- Finally, set the server status to "Idle" and clean up conditions.
         if phase != Phase::Idle {
-            self.set_server_status(&server, Condition::Idle).await?;
-            self.cleanup_server_conditions(&server).await?;
+            let condition = Condition::Idle;
+            let _ = server.set_server_status(&self.client, condition).await?;
+            let _ = server.cleanup_server_conditions(&self.client).await?;
         }
         Ok(())
-    }
-
-    /// Requests the server to start.
-    #[tracing::instrument(name = "RequestStart", skip_all, fields(server = %server.name_any()))]
-    pub async fn request_server_up(&self, server: &MCPServer) -> Result<()> {
-        loop {
-            let server = self.get_server_by_name(&server.name_any()).await?;
-            let phase = server.status.clone().unwrap_or_default().phase;
-            match phase {
-                Phase::Idle => {
-                    let condition = Condition::Requested;
-                    self.set_server_status(&server, condition).await?;
-                }
-                Phase::Stopping => {
-                    let condition = Condition::Requested;
-                    self.set_server_status(&server, condition).await?;
-                }
-                Phase::Failed => {
-                    return Err(Error::Internal("Server is in an error state".to_string()))?;
-                }
-                Phase::Running => {
-                    return Ok(());
-                }
-                _ => {
-                    sleep(Duration::from_millis(100)).await;
-                }
-            }
-        }
-    }
-
-    /// Attaches to a pod's TTY and returns a stream of events for SSE.
-    #[tracing::instrument(name = "GetServerTransport", skip_all)]
-    pub async fn get_server_transport(
-        &self,
-        server: &MCPServer,
-    ) -> Result<Arc<RwLock<MCPServerTransportStdio>>> {
-        // --- Check if the transport already exists and is alive for this server.
-        let should_remove = {
-            match self.transports.read().await.get(&server.name_any()) {
-                None => false,
-                Some(transport) => {
-                    if transport.read().await.is_alive().await {
-                        return Ok(transport.clone());
-                    } else {
-                        true
-                    }
-                }
-            }
-        };
-
-        // --- Remove the transport outside of the read lock scope if needed
-        if should_remove {
-            self.transports.write().await.remove(&server.name_any());
-        }
-
-        // --- Create a new channel if none exists.
-        match server.spec.transport {
-            MCPServerTransport::Sse { .. } => Err(Error::Internal(
-                "SSE transport is not supported yet".to_string(),
-            )),
-
-            // --- Create a new transport that will proxy the pod's TTY to a BroadcastStream.
-            // --- This will allow us to send and receive messages from the pod via SSE.
-            MCPServerTransport::Stdio => {
-                let process = Api::<Pod>::namespaced(self.get_client(), &self.get_namespace())
-                    .attach(
-                        &server.name_pod(),
-                        &AttachParams::interactive_tty()
-                            .container("server")
-                            .max_stdout_buf_size(DEFAULT_POD_BUFFER_SIZE)
-                            .max_stdin_buf_size(DEFAULT_POD_BUFFER_SIZE),
-                    )
-                    .await
-                    .map_err(Error::KubeError)?;
-
-                // --- Create a new transport attached to the pod's TTY.
-                let transport = MCPServerTransportStdio::new(process, server.clone());
-                let transport = Arc::new(RwLock::new(transport));
-                self.transports
-                    .write()
-                    .await
-                    .insert(server.name_any(), transport.to_owned());
-
-                // --- Return the Arc of the transport
-                Ok(transport)
-            }
-        }
     }
 
     /// Determine if the server should be started based on its status and pool limits.
     #[tracing::instrument(name = "CanServerdBeUp", skip_all)]
     pub async fn can_server_be_up(&self, server: &MCPServer) -> Result<bool> {
-        let pool = self.get_pool_by_name(&server.spec.pool).await?;
-        let pool_status = pool.status.clone().unwrap_or_default();
+        let pool = MCPPool::get_by_name(&self.client, &server.spec.pool).await?;
+        let pool_status = pool.status.unwrap_or_default();
 
         // --- If active_servers_count >= max_servers_active, server should not be up
         if pool_status.active_servers_count >= pool.spec.max_servers_active {
@@ -435,35 +152,22 @@ impl Controller {
     /// Determine if the server should be shutdown based on its status and idle timeout.
     #[tracing::instrument(name = "ShouldServerBeDown", skip_all)]
     pub async fn should_server_be_down(&self, server: &MCPServer) -> Result<bool> {
-        let status = server.status.clone().unwrap_or_default();
-        let pool = self.get_pool_by_name(&server.spec.pool).await?;
+        let status = server.get_status(&self.client).await?;
+        let pool = MCPPool::get_by_name(&self.client, &server.spec.pool).await?;
 
         // --- Check idle timeout
         if let Some(last_request) = &status.last_request_at {
-            // Get the relevant idle timeout (server's value or pool's default)
-            let idle_timeout = if server.spec.idle_timeout > 0 {
-                server.spec.idle_timeout
-            } else {
-                pool.spec.default_idle_timeout
+            let tiemout = match server.spec.idle_timeout {
+                0 => pool.spec.default_idle_timeout,
+                _ => server.spec.idle_timeout,
             };
 
             // If elapsed time is greater than the idle timeout, server should not be up
             let now = Utc::now();
             let elapsed = now.signed_duration_since(*last_request).to_std().unwrap();
             let elapsed_secs = elapsed.as_secs() as i64;
-            if elapsed_secs > idle_timeout as i64 {
-                tracing::info!(
-                    "Server idle timeout reached, shutting down server {}",
-                    server.name_any()
-                );
+            if elapsed_secs > tiemout as i64 {
                 return Ok(true);
-            } else {
-                let remaining = idle_timeout as i64 - elapsed_secs;
-                tracing::info!(
-                    "Server idle timeout remaining: {}s, server {}",
-                    remaining,
-                    server.name_any()
-                );
             }
         }
 
@@ -473,7 +177,10 @@ impl Controller {
 
     /// Reconcile the MCPServer resource by checking its status and updating it accordingly.
     #[tracing::instrument(name = "Reconcile", skip_all, fields(server = %server.name_any()))]
-    async fn reconcile(&self, server: Arc<MCPServer>) -> Result<Action> {
+    async fn reconcile(
+        &self,
+        server: Arc<MCPServer>,
+    ) -> core::result::Result<Action, finalizer::Error<ReconcileReportError>> {
         let api = Api::<MCPServer>::namespaced(self.get_client(), &self.get_namespace());
 
         // --- Handle the reconciliation process using finalizers to ensure
@@ -483,68 +190,77 @@ impl Controller {
             move |event| async move {
                 match event {
                     Event::Cleanup(server) => {
-                        self.ensure_server_is_down(&server).await?;
+                        self.ensure_server_is_down(&server)
+                            .await
+                            .expect("Failed to ensure server is down");
                         Ok(Action::requeue(Duration::from_secs(5)))
                     }
-                    Event::Apply(server) => {
+                    Event::Apply(server) => async {
                         let phase = server.status.clone().unwrap_or_default().phase;
                         match phase {
-                            Phase::Idle => {
-                                tracing::info!("Server is idle, ensuring it is down",);
-                                self.ensure_server_is_down(&server).await?;
-                                Ok(Action::requeue(Duration::from_secs(5)))
-                            }
-                            Phase::Stopping => {
-                                tracing::info!("Server is stopping, ensuring it is down");
-                                self.ensure_server_is_down(&server).await?;
-                                Ok(Action::requeue(Duration::from_secs(5)))
-                            }
-                            Phase::Failed => {
-                                tracing::info!("Server is in error state, ensuring it is down");
-                                self.ensure_server_is_down(&server).await?;
-                                Ok(Action::requeue(Duration::from_secs(5)))
-                            }
+                            Phase::Idle => self.ensure_server_is_down(&server).await?,
+                            Phase::Failed => self.ensure_server_is_down(&server).await?,
+                            Phase::Stopping => self.ensure_server_is_down(&server).await?,
                             Phase::Requested => {
-                                tracing::info!("Server is Requested, checking if it should be up");
+                                tracing::info!(
+                                    "Server is in requested phase, checking conditions for: {}",
+                                    server.name_any()
+                                );
                                 if controller.can_server_be_up(&server).await? {
-                                    self.ensure_server_is_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?
                                 } else {
-                                    self.ensure_server_is_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?
                                 }
-                                Ok(Action::requeue(Duration::from_secs(5)))
                             }
                             Phase::Starting => {
-                                tracing::info!("Server is Starting, checking if it should be up");
+                                tracing::info!("Starting server: {}", server.name_any());
                                 if controller.can_server_be_up(&server).await? {
-                                    self.ensure_server_is_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?
                                 } else if controller.should_server_be_down(&server).await? {
-                                    self.ensure_server_is_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?
                                 }
-                                Ok(Action::await_change())
                             }
                             Phase::Running => {
-                                tracing::debug!("Server is Running, checking if it should be down");
+                                tracing::info!("Server is running: {}", server.name_any());
                                 if controller.should_server_be_down(&server).await? {
-                                    self.ensure_server_is_down(&server).await?;
+                                    self.ensure_server_is_down(&server).await?
                                 } else {
-                                    self.ensure_server_is_up(&server).await?;
+                                    self.ensure_server_is_up(&server).await?
                                 }
-                                Ok(Action::requeue(Duration::from_secs(5)))
                             }
                         }
+                        Result::Ok(Action::requeue(Duration::from_secs(5)))
                     }
+                    // The `kube::runtime::finalizer` expects it's reconcile closure to return an error that
+                    // implements `std::error::Error`, however, since we are using `error_stack::Report` and
+                    // since that type does not implement `std::error::Error`, we need to temporarily wrap it
+                    // in a custom error type that does implement `std::error::Error`.
+                    .await
+                    .map_err(ReconcileReportError),
                 }
             }
         })
         .await
-        .map_err(Error::from)
     }
 
     /// Handle an error during the reconciliation process.
     #[tracing::instrument(name = "ErrorPolicy", skip_all)]
-    fn error_policy(&self, _server: &MCPServer, error: &Error) -> Result<Action> {
-        tracing::error!("{}", error.to_message());
-        Ok(Action::requeue(Duration::from_secs(5)))
+    fn error_policy(
+        &self,
+        _server: &MCPServer,
+        error: &finalizer::Error<ReconcileReportError>,
+    ) -> Result<Action> {
+        match error {
+            finalizer::Error::ApplyFailed(e) => {
+                let _ = e.0.clone().trace();
+                Ok(Action::requeue(Duration::from_secs(5)))
+            }
+            _ => {
+                tracing::error!("Unhandled error during MCPServer reconciliation: {}", error);
+                // Requeue the action to retry later
+                Ok(Action::requeue(Duration::from_secs(5)))
+            }
+        }
     }
 
     /// Start the operator for managing MCPServer resources.
@@ -559,24 +275,29 @@ impl Controller {
         let api_services = Api::<v1::Service>::namespaced(self.get_client(), &ns);
 
         // --- Start the controller for MCPServer resources.
-        tracing::info!("Starting");
-        RuntimeController::new(api, wc.clone())
-            .owns(api_pod, wc.clone())
-            .owns(api_services, wc.clone())
+        tracing::info!("Starting MCPServer operator in namespace '{}'", ns);
+        let stream = RuntimeController::new(api, wc.clone())
+            .owns(api_pod, Default::default())
+            .owns(api_services, Default::default())
             .run(
-                |server, controller| async move { controller.reconcile(server).await },
+                |server, controller| async move {
+                    tracing::debug!("Reconcile MCPServer: {}", server.name_any());
+                    controller.reconcile(server).await
+                },
                 |server, error, controller| controller.error_policy(&server, error).unwrap(),
                 Arc::new(self.clone()),
-            )
-            // --- Consume each event from the controller.
-            .for_each(async move |event| match event {
-                Ok(..) => {
-                    sleep(Duration::from_secs(5)).await;
+            );
+
+        // --- Loop to handle the reconciliation stream.
+        stream
+            .for_each(|result| {
+                match result {
+                    Ok(action) => tracing::debug!("Reconciled MCPServer action: {:?}", action),
+                    Err(error) => {
+                        let _ = Error::from(error).trace();
+                    }
                 }
-                Err(error) => {
-                    tracing::error!("Error: {}", error.to_string());
-                    sleep(Duration::from_secs(5)).await;
-                }
+                futures::future::ready(())
             })
             .await;
 
