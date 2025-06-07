@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ESNext",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": [
+      "@types/node",
+    ],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "outDir": "dist",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "./index.ts",
+    "eslint.config.mjs"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/dist"
+  ]
+}
