@@ -72,17 +72,7 @@ impl TransportAttachedProcess {
                         let data = String::from_utf8_lossy(data).to_string();
                         for line in data.lines() {
                             if !line.trim().is_empty() {
-                                let message: JsonRpcMessage = match serde_json::from_str(line) {
-                                    Ok(message) => message,
-                                    Err(error) => {
-                                        tracing::error!(
-                                            "[STDOUT/ERROR]: Failed to parse message: {}",
-                                            error
-                                        );
-                                        continue;
-                                    }
-                                };
-                                tracing::info!("[STDOUT]: {:?}", message.clone());
+                                let message: JsonRpcMessage = serde_json::from_str(line)?;
                                 let _ = stdout_tx.send(message).map_err(Error::from)?;
                             }
                         }

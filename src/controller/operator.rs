@@ -192,7 +192,7 @@ impl Controller {
                     Event::Cleanup(server) => {
                         self.ensure_server_is_down(&server)
                             .await
-                            .expect("Failed to ensure server is down");
+                            .map_err(ReconcileReportError)?;
                         Ok(Action::requeue(Duration::from_secs(5)))
                     }
                     Event::Apply(server) => async {
@@ -202,10 +202,6 @@ impl Controller {
                             Phase::Failed => self.ensure_server_is_down(&server).await?,
                             Phase::Stopping => self.ensure_server_is_down(&server).await?,
                             Phase::Requested => {
-                                tracing::info!(
-                                    "Server is in requested phase, checking conditions for: {}",
-                                    server.name_any()
-                                );
                                 if controller.can_server_be_up(&server).await? {
                                     self.ensure_server_is_up(&server).await?
                                 } else {
@@ -213,7 +209,6 @@ impl Controller {
                                 }
                             }
                             Phase::Starting => {
-                                tracing::info!("Starting server: {}", server.name_any());
                                 if controller.can_server_be_up(&server).await? {
                                     self.ensure_server_is_up(&server).await?
                                 } else if controller.should_server_be_down(&server).await? {
@@ -221,7 +216,6 @@ impl Controller {
                                 }
                             }
                             Phase::Running => {
-                                tracing::info!("Server is running: {}", server.name_any());
                                 if controller.should_server_be_down(&server).await? {
                                     self.ensure_server_is_down(&server).await?
                                 } else {
