@@ -65,9 +65,13 @@ kube:
 operator:
     cargo watch -s 'clear && cargo run -- operator --log-level trace --log-format detailed --show-backtrace'
 
-# Start the server
+# Start the gateway API
 gateway:
     cargo watch -s 'clear && cargo run -- gateway --port 8080 --log-level trace --log-format detailed --show-backtrace'
+
+# Start the manager API
+manager:
+    cargo watch -s 'clear && cargo run -- manager --port 8081 --log-level trace --log-format detailed --show-backtrace'
 
 ##########################################
 
