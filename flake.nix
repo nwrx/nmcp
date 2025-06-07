@@ -91,6 +91,7 @@
         # in a container. This is useful for running the binary
         nmcpDockerImage = pkgs.dockerTools.buildLayeredImage {
           name = "nwrx/nmcp";
+          tag = "next";
           contents = with pkgs; [ nmcp cacert ];
           config.Entrypoint = [ "${nmcp}/bin/nmcp" ];
           config.ExposedPorts = { "8080/tcp" = {}; };

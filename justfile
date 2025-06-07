@@ -75,19 +75,27 @@ manager:
 
 ##########################################
 
+# Build the Docker image
+docker-build:
+    nix build .#dockerImage
+    docker load < result
+    rm result
+
 # Run the NMCP operator in Docker
-docker-run-operator registry='' tag='latest' kubeconfig_path=KUBECONFIG:
+docker-run-operator kubeconfig_path=KUBECONFIG:
+    @just docker-build
     docker run --rm \
         --volume {{kubeconfig_path}}:/app/kubeconfig.yaml \
-        {{registry}}nmcp:{{tag}} operator \
+        nwrx/nmcp:next operator \
         --kubeconfig /app/kubeconfig.yaml
 
 # Run the NMCP gateway in Docker
-docker-run-gateway registry='' tag='latest' kubeconfig_path=KUBECONFIG port='8080':
+docker-run-gateway kubeconfig_path=KUBECONFIG port='8080':
+    @just docker-build
     docker run --rm \
         --volume {{kubeconfig_path}}:/app/kubeconfig.yaml \
         -p {{port}}:{{port}} \
-        {{registry}}nmcp:{{tag}} gateway \
+        nwrx/nmcp:next gateway \
         --kubeconfig /app/kubeconfig.yaml \
         --port {{port}} \
         --host 0.0.0.0
