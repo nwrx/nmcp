@@ -1,4 +1,5 @@
-use crate::{Error, Result};
+use super::Error;
+use crate::Result;
 use serde_json as JSON;
 use serde_yml as YAML;
 
@@ -7,7 +8,7 @@ pub fn serialize<T: serde::Serialize>(crd: &T, format: &str) -> Result<String> {
     match format {
         "json" => JSON::to_string_pretty(&crd).map_err(Error::from),
         "yaml" => YAML::to_string(&crd).map_err(Error::from),
-        _ => Err(Error::UnsupportedFormat(format.to_string())),
+        _ => Err(Error::generic("Unsupported format. Use 'json' or 'yaml'.")),
     }
 }
 
