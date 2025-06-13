@@ -94,6 +94,7 @@ impl Gateway {
             .route("/openapi.json", get(super::docs::serve))
             .route("/", Scalar::new("/openapi.json").axum_route())
             .nest_api_service("/{name}", super::sse::router(ctx.clone()))
+            .nest_api_service("/health", super::health::router(ctx.clone()))
             .finish_api_with(&mut api, super::docs::openapi)
             .layer(Extension(api))
             .layer(TraceLayer::new_for_http())

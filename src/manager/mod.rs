@@ -1,4 +1,5 @@
 mod docs;
+mod health;
 mod pool;
 mod pool_body;
 mod pool_docs;

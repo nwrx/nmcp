@@ -77,6 +77,7 @@ impl Manager {
             .route("/swagger", Swagger::new("/openapi.json").axum_route())
             .nest_api_service("/api/v1/servers", super::server::router(ctx.clone()))
             .nest_api_service("/api/v1/pools", super::pool::router(ctx.clone()))
+            .nest_api_service("/health", super::health::router(ctx.clone()))
             .finish_api_with(&mut api, super::docs::openapi)
             .layer(Extension(api))
             .layer(TraceLayer::new_for_http())

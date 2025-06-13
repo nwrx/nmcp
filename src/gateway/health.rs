@@ -1,4 +1,4 @@
-use super::ManagerContext;
+use super::GatewayContext;
 use aide::axum::routing::get;
 use aide::axum::ApiRouter;
 use axum::extract::State;
@@ -26,18 +26,18 @@ impl Default for Status {
 }
 
 /// Handler for the `/health/status` endpoint.
-pub async fn status(State(_): State<ManagerContext>) -> Response {
+pub async fn status(State(_): State<GatewayContext>) -> Response {
     let status = Status::default();
     (StatusCode::OK, Json(status)).into_response()
 }
 
 /// Handler for the `/health/ping` endpoint.
-pub async fn ping(State(_): State<ManagerContext>) -> Response {
+pub async fn ping(State(_): State<GatewayContext>) -> Response {
     (StatusCode::OK, ()).into_response()
 }
 
 /// Route for health checks.
-pub fn router(ctx: ManagerContext) -> ApiRouter<()> {
+pub fn router(ctx: GatewayContext) -> ApiRouter<()> {
     ApiRouter::new()
         .api_route("/status", get(status))
         .api_route("/ping", get(ping))
