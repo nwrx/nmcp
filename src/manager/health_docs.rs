@@ -1,4 +1,4 @@
-use super::health::Status;
+use super::health::ManagerStatus;
 use aide::transform::TransformOperation;
 use axum::extract::Json;
 
@@ -8,10 +8,10 @@ pub fn status_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .tag("Health")
         .summary("Health Status")
         .description("Retrieves the health status of the manager service, including version information and current timestamp. This endpoint provides a comprehensive health check that includes service availability and metadata.")
-        .response_with::<200, Json<Status>, _>(|response| {
+        .response_with::<200, Json<ManagerStatus>, _>(|response| {
             response
                 .description("The service is healthy and operational.")
-                .example(Status::default())
+                .example(ManagerStatus::default())
         })
 }
 

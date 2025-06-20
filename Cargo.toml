@@ -37,6 +37,7 @@ tracing = "0.1.41"
 kube-client = "1.1.0"
 tracing-core = "0.1.33"
 tryhard = "0.5.1"
+sysinfo = "0.35.2"
 
 
 [dependencies.tracing-subscriber]

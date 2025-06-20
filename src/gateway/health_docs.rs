@@ -1,4 +1,4 @@
-use super::health::Status;
+use super::health::GatewayStatus;
 use aide::transform::TransformOperation;
 use axum::extract::Json;
 
@@ -8,10 +8,10 @@ pub fn status_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .tag("Health")
         .summary("Gateway Health Status")
         .description("Retrieves the health status of the gateway service, including version information and current timestamp. This endpoint provides a comprehensive health check that includes service availability and metadata.")
-        .response_with::<204, Json<Status>, _>(|response| {
+        .response_with::<204, Json<GatewayStatus>, _>(|response| {
             response
                 .description("The gateway service is healthy and operational.")
-                .example(Status::default())
+                .example(GatewayStatus::default())
         })
 }
 
