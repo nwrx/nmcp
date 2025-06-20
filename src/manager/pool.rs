@@ -1,4 +1,5 @@
-use super::{pool_docs, MCPPoolList, ManagerContext};
+use super::pool_body::MCPPoolList;
+use super::{pool_docs, ManagerContext};
 use crate::{MCPPool, MCPPoolSpec, ResourceManager};
 use aide::axum::routing::get_with;
 use aide::axum::{ApiRouter, IntoApiResponse};

@@ -1,4 +1,5 @@
-use super::{server_docs, MCPServerList, ManagerContext};
+use super::server_body::MCPServerList;
+use super::{server_docs, ManagerContext};
 use crate::{MCPServer, MCPServerSpec, ResourceManager};
 use aide::axum::routing::get_with;
 use aide::axum::{ApiRouter, IntoApiResponse};

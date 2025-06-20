@@ -1,5 +1,5 @@
-use super::GatewayContext;
-use aide::axum::routing::get;
+use super::{health_docs, GatewayContext};
+use aide::axum::routing::get_with;
 use aide::axum::ApiRouter;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -33,13 +33,13 @@ pub async fn status(State(_): State<GatewayContext>) -> Response {
 
 /// Handler for the `/health/ping` endpoint.
 pub async fn ping(State(_): State<GatewayContext>) -> Response {
-    (StatusCode::OK, ()).into_response()
+    (StatusCode::NO_CONTENT, ()).into_response()
 }
 
 /// Route for health checks.
 pub fn router(ctx: GatewayContext) -> ApiRouter<()> {
     ApiRouter::new()
-        .api_route("/status", get(status))
-        .api_route("/ping", get(ping))
+        .api_route("/status", get_with(status, health_docs::status_docs))
+        .api_route("/ping", get_with(ping, health_docs::ping_docs))
         .with_state(ctx)
 }

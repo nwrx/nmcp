@@ -1,4 +1,4 @@
-use super::MCPPoolBody;
+use super::pool_body::MCPPoolBody;
 use aide::transform::TransformOperation;
 use axum::extract::Json;
 

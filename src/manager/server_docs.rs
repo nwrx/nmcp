@@ -1,4 +1,4 @@
-use crate::MCPServerBody;
+use super::server_body::MCPServerBody;
 use aide::transform::TransformOperation;
 use axum::extract::Json;
 
