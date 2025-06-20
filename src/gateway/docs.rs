@@ -9,6 +9,7 @@ pub async fn serve(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
 
 pub fn openapi(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
     api.title("NMCP")
+        .version(env!("CARGO_PKG_VERSION"))
         .summary("Kubernetes operator for managing MCP servers")
         .tag(Tag {
             name: "Server".to_string(),
