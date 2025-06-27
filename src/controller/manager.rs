@@ -1,6 +1,6 @@
 use super::MCP_SERVER_OPERATOR_MANAGER;
 use crate::utils::{Error, Result};
-use crate::{MCPPool, MCPServer, ResultExt};
+use crate::{MCPPool, MCPServer};
 use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Api, ListParams, ObjectMeta, Patch, PatchParams, PostParams};
 use kube::core::object::{HasSpec, HasStatus};
@@ -51,15 +51,6 @@ where
                 .get(name)
                 .await
                 .map_err(Error::from)
-                .with_message(format!(
-                    "Failed to get '{}' resource with name '{}' from namespace '{}'.",
-                    std::any::type_name::<Self>()
-                        .split("::")
-                        .last()
-                        .unwrap_or("Unknown"),
-                    name,
-                    client.default_namespace()
-                ))
         }
     }
 
@@ -114,15 +105,13 @@ where
     ) -> impl Future<Output = Result<Self>> + Send {
         async move {
             let patch = serde_json::json!({
-                "apiVersion": "nmcp.nwrx.io/v1",
-                "kind": "MCPServer",
                 "spec": spec
             });
             Api::<Self>::namespaced(client.clone(), client.default_namespace())
                 .patch(
                     &self.name_any(),
                     &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                    &Patch::Apply(patch),
+                    &Patch::Merge(patch),
                 )
                 .await
                 .map_err(Error::from)
@@ -136,11 +125,12 @@ where
         status: Self::Status,
     ) -> impl Future<Output = Result<Self>> + Send {
         async move {
+            let patch = serde_json::json!({ "status": status });
             Api::<Self>::namespaced(client.clone(), client.default_namespace())
                 .patch_status(
                     &self.name_any(),
                     &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
-                    &Patch::Merge(&serde_json::json!({ "status": status })),
+                    &Patch::Merge(&patch),
                 )
                 .await
                 .map_err(Error::from)

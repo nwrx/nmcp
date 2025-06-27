@@ -6,6 +6,7 @@ impl From<kube::Error> for Error {
         match &source {
             kube::Error::Api(error) => {
                 let code = error.code;
+                let message = error.message.clone();
                 let status_text = StatusCode::from_u16(code)
                     .unwrap_or_default()
                     .canonical_reason()
@@ -14,7 +15,10 @@ impl From<kube::Error> for Error {
                     .to_uppercase();
                 let name = format!("E_KUBE_API_{status_text}");
                 let source = ErrorInner::KubeError(source);
-                Self::new(source).with_name(name).with_status(code)
+                Self::new(source)
+                    .with_name(name)
+                    .with_status(code)
+                    .with_message(message)
             }
 
             // Failure to build a request to the Kubernetes API.
