@@ -75,8 +75,8 @@ pub async fn delete(
     .into_response()
 }
 
-/// Handler for PATCH /api/v1/servers/{name}
-pub async fn patch(
+/// Handler for PUT /api/v1/servers/{name}
+pub async fn update(
     State(ctx): State<ManagerContext>,
     Path(name): Path<String>,
     Json(spec): Json<MCPServerSpec>,
@@ -102,7 +102,7 @@ pub fn router(ctx: ManagerContext) -> ApiRouter<()> {
         .api_route(
             "/{name}",
             get_with(get, server_docs::get_docs)
-                .patch_with(patch, server_docs::patch_docs)
+                .put_with(update, server_docs::update_docs)
                 .delete_with(delete, server_docs::delete_docs),
         )
         .with_state(ctx)

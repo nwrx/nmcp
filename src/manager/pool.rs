@@ -48,7 +48,7 @@ async fn create(
 }
 
 /// Handler for PATCH /api/v1/pools/{name}
-async fn patch(
+async fn update(
     State(ctx): State<ManagerContext>,
     Path(name): Path<String>,
     Json(spec): Json<MCPPoolSpec>,
@@ -87,7 +87,7 @@ pub fn router(ctx: ManagerContext) -> ApiRouter<()> {
         .api_route(
             "/{name}",
             get_with(get, pool_docs::get_docs)
-                .patch_with(patch, pool_docs::patch_docs)
+                .put_with(update, pool_docs::update_docs)
                 .delete_with(delete, pool_docs::delete_docs),
         )
         .with_state(ctx.clone())

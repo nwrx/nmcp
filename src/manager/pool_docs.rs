@@ -41,15 +41,15 @@ pub fn create_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         })
 }
 
-/// Documentation for the PATCH /api/v1/pools/{name} endpoint
-pub fn patch_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("patchPoolByName")
+/// Documentation for the PUT /api/v1/pools/{name} endpoint
+pub fn update_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("updatePoolByName")
         .tag("Pool")
-        .summary("Patch Pool")
+        .summary("Update Pool")
         .description("Updates the configuration of an existing `MCPPool`. This allows modifying server limits, resource allocations, and idle timeout settings without recreating the pool.")
         .response_with::<200, Json<MCPPoolBody>, _>(|response| {
             response
-                .description("The `MCPPool` was patched successfully.")
+                .description("The `MCPPool` was updated successfully.")
                 .example(MCPPoolBody::default())
         })
 }

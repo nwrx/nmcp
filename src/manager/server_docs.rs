@@ -55,10 +55,10 @@ pub fn delete_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 }
 
 /// Documentation for the PATCH /api/v1/servers/{name} endpoint
-pub fn patch_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("patchServerByName")
+pub fn update_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("updateServerByName")
         .tag("Server")
-        .summary("Patch Server")
+        .summary("Update Server")
         .description("Updates the configuration of an existing `MCPServer`. This allows modifying the container image, arguments, environment variables, transport configuration, and other settings while maintaining the server's identity.")
         .response_with::<200, Json<MCPServerBody>, _>(|response| {
             response
