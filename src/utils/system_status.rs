@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StatusSystemCpu {
+pub struct SystemStatusCpu {
     /// The model of the CPU (e.g., `Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz`).
     pub model: String,
 
     /// The frequency of the CPU in MHz.
-    pub frequency: u64,
+    pub speed: u64,
 
     /// The CPU usage percentage.
     pub usage: f32,
@@ -16,7 +16,7 @@ pub struct StatusSystemCpu {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct StatusSystem {
+pub struct SystemStatus {
     /// The uptime of the system in seconds.
     pub uptime: u64,
 
@@ -36,28 +36,38 @@ pub struct StatusSystem {
     pub release: String,
 
     /// The amount of free memory in bytes.
-    pub freemem: u64,
+    pub memory_free: u64,
+
+    /// The amount of used memory in bytes.
+    pub memory_used: u64,
 
     /// The total amount of memory in bytes.
-    pub totalmem: u64,
+    pub memory_total: u64,
 
     /// The amount of available memory in bytes (total memory - free memory).
-    pub availmem: u64,
+    pub memory_available: u64,
 
     /// The number of available parallelism threads.
-    pub available_parallelismv: usize,
+    pub available_parallelism: usize,
 
     /// The load average over the last 1, 5, and 15 minutes.
-    pub loadavg: [f64; 3],
+    pub cpu_average_load: [f64; 3],
+
+    /// The average CPU speed in MHz.
+    pub cpu_average_speed: u64,
 
     /// A list of CPU information.
-    pub cpus: Vec<StatusSystemCpu>,
+    pub cpus: Vec<SystemStatusCpu>,
 }
 
-impl Default for StatusSystem {
+impl Default for SystemStatus {
     fn default() -> Self {
         let mut system = System::new_all();
         system.refresh_all();
+        system.refresh_all();
+
+        let cpu = system.cpus();
+
         Self {
             uptime: System::uptime(),
             arch: System::cpu_arch(),
@@ -65,22 +75,23 @@ impl Default for StatusSystem {
             platform: std::env::consts::OS.to_string(),
             version: System::kernel_long_version(),
             release: System::long_os_version().unwrap_or("Unknown".to_string()),
-            freemem: system.free_memory(),
-            totalmem: system.total_memory(),
-            availmem: system.available_memory(),
-            available_parallelismv: std::thread::available_parallelism()
+            memory_free: system.free_memory(),
+            memory_used: system.used_memory(),
+            memory_total: system.total_memory(),
+            memory_available: system.available_memory(),
+            available_parallelism: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(1),
-            loadavg: {
+            cpu_average_load: {
                 let load_avg = System::load_average();
                 [load_avg.one, load_avg.five, load_avg.fifteen]
             },
-            cpus: system
-                .cpus()
+            cpu_average_speed: cpu.iter().map(|c| c.frequency()).sum::<u64>() / cpu.len() as u64,
+            cpus: cpu
                 .iter()
-                .map(|cpu| StatusSystemCpu {
+                .map(|cpu| SystemStatusCpu {
                     model: cpu.brand().to_string(),
-                    frequency: cpu.frequency(),
+                    speed: cpu.frequency(),
                     usage: cpu.cpu_usage(),
                 })
                 .collect(),
@@ -94,13 +105,13 @@ mod tests {
 
     #[test]
     fn test_status_system_default() {
-        let status = StatusSystem::default();
+        let status = SystemStatus::default();
         assert!(status.uptime > 0);
-        assert!(status.totalmem > 0);
-        assert!(status.freemem <= status.totalmem);
-        assert!(status.availmem <= status.totalmem);
-        assert!(status.available_parallelismv > 0);
-        assert!(status.loadavg.iter().all(|&x| x >= 0.0));
+        assert!(status.memory_total > 0);
+        assert!(status.memory_free <= status.memory_total);
+        assert!(status.memory_available <= status.memory_total);
+        assert!(status.available_parallelism > 0);
+        assert!(status.cpu_average_load.iter().all(|&x| x >= 0.0));
         assert!(!status.arch.is_empty());
         assert!(!status.family.is_empty());
         assert!(!status.platform.is_empty());

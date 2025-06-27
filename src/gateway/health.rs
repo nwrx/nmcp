@@ -1,5 +1,5 @@
 use super::{health_docs, GatewayContext};
-use crate::StatusSystem;
+use crate::SystemStatus;
 use aide::axum::routing::get_with;
 use aide::axum::ApiRouter;
 use axum::extract::State;
@@ -27,7 +27,7 @@ pub struct GatewayStatus {
     pub uptime: u64,
 
     /// Optional system information.
-    pub system: StatusSystem,
+    pub system: SystemStatus,
 }
 
 impl Default for GatewayStatus {
@@ -36,7 +36,7 @@ impl Default for GatewayStatus {
             ok: true,
             version: env!("CARGO_PKG_VERSION").to_string(),
             uptime: APP_START_TIME.elapsed().unwrap_or_default().as_secs(),
-            system: StatusSystem::default(),
+            system: SystemStatus::default(),
         }
     }
 }
