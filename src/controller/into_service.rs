@@ -21,6 +21,17 @@ impl IntoResource<v1::Service> for MCPServer {
 
         let mut ports: Vec<v1::ServicePort> = Vec::new();
         match self.spec.transport {
+            // No ports needed for stdio transport
+            MCPServerTransport::Stdio => {}
+            MCPServerTransport::StreamableHttp { port } => {
+                ports.push(v1::ServicePort {
+                    name: Some("http".to_string()),
+                    port: port.into(),
+                    target_port: Some(IntOrString::Int(port.into())),
+                    protocol: Some("TCP".to_string()),
+                    ..Default::default()
+                });
+            }
             MCPServerTransport::Sse { port } => {
                 ports.push(v1::ServicePort {
                     name: Some("http".to_string()),
@@ -30,8 +41,6 @@ impl IntoResource<v1::Service> for MCPServer {
                     ..Default::default()
                 });
             }
-            // No ports needed for stdio transport
-            MCPServerTransport::Stdio => {}
         }
 
         // --- Create service metadata and spec.

@@ -48,6 +48,9 @@ impl IntoResource<v1::Pod> for MCPServer {
         // --- Create container ports if transport is "SSE"
         let mut container_ports = Vec::new();
         match self.spec.transport {
+            MCPServerTransport::Stdio => {
+                // No ports needed for stdio transport
+            }
             MCPServerTransport::Sse { port } => {
                 container_ports.push(v1::ContainerPort {
                     name: Some("http".to_string()),
@@ -56,8 +59,13 @@ impl IntoResource<v1::Pod> for MCPServer {
                     ..Default::default()
                 });
             }
-            MCPServerTransport::Stdio => {
-                // No ports needed for stdio transport
+            MCPServerTransport::StreamableHttp { port } => {
+                container_ports.push(v1::ContainerPort {
+                    name: Some("http".to_string()),
+                    container_port: port.into(),
+                    protocol: Some("TCP".to_string()),
+                    ..Default::default()
+                });
             }
         }
 
@@ -65,12 +73,14 @@ impl IntoResource<v1::Pod> for MCPServer {
         let startup_probe = match self.spec.transport {
             MCPServerTransport::Stdio => None,
             MCPServerTransport::Sse { .. } => None,
+            MCPServerTransport::StreamableHttp { .. } => None,
         };
 
         // Define readiness probe to ensure container is ready for connections
         let readiness_probe = match self.spec.transport {
             MCPServerTransport::Stdio => None,
             MCPServerTransport::Sse { .. } => None,
+            MCPServerTransport::StreamableHttp { .. } => None,
         };
 
         // --- Create container

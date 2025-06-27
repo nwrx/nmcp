@@ -19,9 +19,19 @@ pub enum MCPServerTransport {
     /// communication over HTTP.
     #[serde(rename = "sse")]
     Sse {
-        /// When the transport type is `sse`, this field specifies the port
+        /// When the transport type is `Sse`, this field specifies the port
         /// on which the server will listen for incoming connections. This field
         /// is required for the `sse` transport type.
+        port: u16,
+    },
+
+    /// Streamable HTTP. This transport type is used for
+    /// communication over HTTP with streaming capabilities.
+    #[serde(rename = "streamable-http")]
+    StreamableHttp {
+        /// When the transport type is `StreamableHttp`, this field specifies the port
+        /// on which the server will listen for incoming connections. This field
+        /// is required for the `streamable_http` transport type.
         port: u16,
     },
 }
@@ -51,7 +61,7 @@ impl JsonSchema for MCPServerTransport {
                 ..Default::default()
             })),
             instance_type: Some(InstanceType::String.into()),
-            enum_values: Some(vec!["stdio".into(), "sse".into()]),
+            enum_values: Some(vec!["stdio".into(), "sse".into(), "streamable-http".into()]),
             ..Default::default()
         };
 
@@ -59,7 +69,7 @@ impl JsonSchema for MCPServerTransport {
         let port_schema = SchemaObject {
             metadata: Some(Box::new(Metadata {
                 description: Some(
-                    "Port number for SSE transport, required when type is 'sse'".to_string(),
+                    "Port number for SSE transport, required when type is 'sse' or 'streamable-http'".to_string()
                 ),
                 ..Default::default()
             })),
@@ -91,16 +101,18 @@ impl MCPServerTransport {
     /// Get the type of transport as a string
     pub fn transport_type(&self) -> String {
         match self {
-            Self::Sse { .. } => "sse".to_string(),
             Self::Stdio => "stdio".to_string(),
+            Self::Sse { .. } => "sse".to_string(),
+            Self::StreamableHttp { .. } => "streamable-http".to_string(),
         }
     }
 
     /// Get the port for SSE transport, if applicable
     pub fn port(&self) -> Option<u16> {
         match self {
-            Self::Sse { port } => Some(*port),
             Self::Stdio => None,
+            Self::Sse { port } => Some(*port),
+            Self::StreamableHttp { port } => Some(*port),
         }
     }
 }
@@ -108,8 +120,9 @@ impl MCPServerTransport {
 impl Display for MCPServerTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sse { port } => write!(f, "sse-{port}"),
             Self::Stdio => write!(f, "stdio"),
+            Self::Sse { port } => write!(f, "sse-{port}"),
+            Self::StreamableHttp { port } => write!(f, "streamable-http-{port}"),
         }
     }
 }

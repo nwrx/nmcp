@@ -28,10 +28,6 @@ pub struct Transport(Arc<RwLock<TransportInner>>);
 impl Transport {
     pub fn new(client: &Client, server: &MCPServer) -> Result<Self> {
         match server.clone().spec.transport {
-            MCPServerTransport::Sse { .. } => {
-                Err(Error::generic("SSE transport is not supported yet"))
-            }
-
             // --- Create a new transport that will proxy the pod's TTY to a BroadcastStream.
             // --- This will allow us to send and receive messages from the pod via SSE.
             MCPServerTransport::Stdio => {
@@ -41,6 +37,14 @@ impl Transport {
                 let transport = Self(transport);
                 Ok(transport)
             }
+
+            // --- Create a new transport that will proxy the pod's HTTP stream to a BroadcastStream.
+            MCPServerTransport::Sse { .. } => {
+                Err(Error::generic("SSE transport is not supported yet"))
+            }
+            MCPServerTransport::StreamableHttp { .. } => Err(Error::generic(
+                "Streamable HTTP transport is not supported yet",
+            )),
         }
     }
 
