@@ -29,8 +29,6 @@ serde_json = "1.0.140"
 serde_yml = "0.0.12"
 termcolor = "1.4.1"
 thiserror = "2.0.12"
-tokio = { version = "1.45.1", features = ["full"] }
-tokio-stream = { version = "0.1.17", features = ["sync"] }
 tower-http = "0.6.4"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 tracing = "0.1.41"
@@ -38,6 +36,11 @@ kube-client = "1.1.0"
 tracing-core = "0.1.33"
 tryhard = "0.5.1"
 sysinfo = "0.35.2"
+
+# Tokio runtime and utilities.
+tokio = { version = "1.45.1", features = ["full"] }
+tokio-util = "0.7.15"
+tokio-stream = { version = "0.1.17", features = ["sync", "io-util"] }
 
 
 [dependencies.tracing-subscriber]

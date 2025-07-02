@@ -2,9 +2,12 @@ use super::TransportPeer;
 use crate::{Error, MCPServer, Result, MCP_SERVER_CONTAINER_NAME};
 use crate::{IntoResource, DEFAULT_POD_BUFFER_SIZE};
 use k8s_openapi::api::core::v1;
-use kube::api::{AttachParams, AttachedProcess};
+use kube::api::{AttachParams, AttachedProcess, LogParams};
 use kube::{Api, Client};
-use rmcp::model::{ClientJsonRpcMessage, JsonRpcMessage};
+use rmcp::model::{
+    ClientJsonRpcMessage, ErrorCode, ErrorData, JsonRpcError, JsonRpcMessage, JsonRpcVersion2_0,
+    NumberOrString,
+};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -20,8 +23,10 @@ pub struct TransportAttachedProcess {
 
     stdin_rx: broadcast::Receiver<ClientJsonRpcMessage>,
     stdin_tx: broadcast::Sender<ClientJsonRpcMessage>,
-    stdout_tx: broadcast::Sender<JsonRpcMessage>,
     stdout_rx: broadcast::Receiver<JsonRpcMessage>,
+    stdout_tx: broadcast::Sender<JsonRpcMessage>,
+    stderr_rx: broadcast::Receiver<JsonRpcMessage>,
+    stderr_tx: broadcast::Sender<JsonRpcMessage>,
 
     task_attach_stdin: Option<JoinHandle<Result<()>>>,
     task_attach_stdout: Option<JoinHandle<Result<()>>>,
@@ -42,6 +47,7 @@ impl TransportAttachedProcess {
     pub fn new(client: &Client, server: &MCPServer) -> Self {
         let (stdin_tx, stdin_rx) = broadcast::channel(DEFAULT_POD_BUFFER_SIZE);
         let (stdout_tx, stdout_rx) = broadcast::channel(DEFAULT_POD_BUFFER_SIZE);
+        let (stderr_tx, stderr_rx) = broadcast::channel(DEFAULT_POD_BUFFER_SIZE);
         Self {
             client: client.clone(),
             server: server.clone(),
@@ -50,6 +56,8 @@ impl TransportAttachedProcess {
             stdin_rx,
             stdout_tx,
             stdout_rx,
+            stderr_tx,
+            stderr_rx,
             task_attach_stdin: None,
             task_attach_stdout: None,
             task_attach_stderr: None,
@@ -61,7 +69,7 @@ impl TransportAttachedProcess {
     where
         T: AsyncReadExt + Send + Unpin + 'static,
     {
-        let stdout_tx = self.stdout_tx.clone();
+        let tx = self.stdout_tx.clone();
         tokio::spawn(async move {
             let mut buffer = vec![0u8; DEFAULT_POD_BUFFER_SIZE];
             loop {
@@ -73,7 +81,7 @@ impl TransportAttachedProcess {
                         for line in data.lines() {
                             if !line.trim().is_empty() {
                                 let message: JsonRpcMessage = serde_json::from_str(line)?;
-                                let _ = stdout_tx.send(message).map_err(Error::from)?;
+                                let _ = tx.send(message).map_err(Error::from)?;
                             }
                         }
                     }
@@ -91,7 +99,7 @@ impl TransportAttachedProcess {
     where
         T: AsyncReadExt + Send + Unpin + 'static,
     {
-        let stdout_tx = self.stdout_tx.clone();
+        let tx = self.stderr_tx.clone();
         tokio::spawn(async move {
             let mut buffer = vec![0u8; DEFAULT_POD_BUFFER_SIZE];
             loop {
@@ -102,8 +110,18 @@ impl TransportAttachedProcess {
                         let data = String::from_utf8_lossy(data).to_string();
                         for line in data.lines() {
                             if !line.trim().is_empty() {
-                                let message: JsonRpcMessage = serde_json::from_str(line)?;
-                                let _ = stdout_tx.send(message).map_err(Error::from)?;
+                                let error = ErrorData {
+                                    message: line.to_string().into(),
+                                    code: ErrorCode::INTERNAL_ERROR,
+                                    data: None,
+                                };
+                                let error = JsonRpcError {
+                                    error,
+                                    id: NumberOrString::Number(0),
+                                    jsonrpc: JsonRpcVersion2_0,
+                                };
+                                let message = JsonRpcMessage::Error(error);
+                                let _ = tx.send(message).map_err(Error::from)?;
                             }
                         }
                     }
@@ -121,17 +139,50 @@ impl TransportAttachedProcess {
     where
         T: AsyncWriteExt + Send + Unpin + 'static,
     {
-        let mut stdin_rx = self.stdin_rx.resubscribe();
+        let mut rx = self.stdin_rx.resubscribe();
+        let stderr_tx = self.stderr_tx.clone();
+        let client = self.client.clone();
+        let server = self.server.clone();
         tokio::spawn(async move {
             loop {
-                match stdin_rx.recv().await {
+                match rx.recv().await {
                     Ok(message) => {
                         let data = serde_json::to_string(&message)?;
                         let data = format!("{data}\n");
                         let data = data.as_bytes();
-                        if let Err(error) = stdin.write_all(data).await {
-                            let error = Error::from(error).trace();
-                            return Err(error);
+
+                        // --- Attempt to write the data to stdin of the attached process.
+                        match stdin.write_all(data).await {
+                            Ok(_) => {}
+
+                            // --- If an error occurs while attempting to write to stdin, this may indicate
+                            // --- that the process has terminated or the pipe is broken. In this case, get the
+                            // --- last logs from the pod and push them to the stderr channel.
+                            Err(..) => {
+                                let logs = Api::<v1::Pod>::namespaced(
+                                    client.clone(),
+                                    client.default_namespace(),
+                                )
+                                .logs(
+                                    &<MCPServer as IntoResource<v1::Pod>>::resource_name(&server),
+                                    &LogParams::default(),
+                                )
+                                .await
+                                .map_err(Error::from)?;
+
+                                let error = ErrorData {
+                                    message: logs.into(),
+                                    code: ErrorCode::INTERNAL_ERROR,
+                                    data: None,
+                                };
+                                let error = JsonRpcError {
+                                    error,
+                                    id: NumberOrString::Number(0),
+                                    jsonrpc: JsonRpcVersion2_0,
+                                };
+                                let message = JsonRpcMessage::Error(error);
+                                let _ = stderr_tx.send(message).map_err(Error::from);
+                            }
                         }
                     }
                     Err(error) => match error {
@@ -149,7 +200,7 @@ impl TransportAttachedProcess {
     }
 
     #[tracing::instrument(name = "AttachToProcess", skip_all)]
-    async fn attach_to_process(&mut self) -> Result<AttachedProcess> {
+    async fn attach_to_process(&self) -> Result<AttachedProcess> {
         Api::<v1::Pod>::namespaced(self.client.clone(), self.client.default_namespace())
             .attach(
                 &<MCPServer as IntoResource<v1::Pod>>::resource_name(&self.server),
@@ -173,7 +224,9 @@ impl TransportAttachedProcess {
             && !self.task_attach_stdout.as_ref().unwrap().is_finished();
         let is_stdin_attached = self.task_attach_stdin.is_some()
             && !self.task_attach_stdin.as_ref().unwrap().is_finished();
-        is_stdout_attached && is_stdin_attached
+        let is_stderr_attached = self.task_attach_stderr.is_some()
+            && !self.task_attach_stderr.as_ref().unwrap().is_finished();
+        is_stdout_attached && is_stdin_attached && is_stderr_attached
     }
 
     #[tracing::instrument(name = "BindStreams", skip_all)]
@@ -232,6 +285,7 @@ impl TransportAttachedProcess {
         // --- Connect the stdin and stdout channels to the peer.
         peer.attach_stdin(self.stdin_tx.clone()).await?;
         peer.attach_stdout(self.stdout_rx.resubscribe()).await?;
+        peer.attach_stderr(self.stderr_rx.resubscribe()).await?;
 
         Ok(peer)
     }

@@ -19,9 +19,8 @@ use uuid::Uuid;
 struct TransportPeerInner {
     pub from_client_tx: broadcast::Sender<ClientJsonRpcMessage>,
     pub from_client_rx: broadcast::Receiver<ClientJsonRpcMessage>,
-    pub server_tx: broadcast::Sender<JsonRpcMessage>,
+    pub from_server_tx: broadcast::Sender<JsonRpcMessage>,
     pub from_server_rx: broadcast::Receiver<JsonRpcMessage>,
-
     task_bind_stdin: Option<JoinHandle<()>>,
     task_bind_stdout: Option<JoinHandle<()>>,
 }
@@ -37,7 +36,7 @@ impl TransportPeerInner {
         let (from_client_tx, from_client_rx) = broadcast::channel(DEFAULT_SSE_CHANNEL_CAPACITY);
         let (from_server_tx, from_server_rx) = broadcast::channel(DEFAULT_SSE_CHANNEL_CAPACITY);
         Self {
-            server_tx: from_server_tx,
+            from_server_tx,
             from_server_rx,
             from_client_tx,
             from_client_rx,
@@ -107,7 +106,7 @@ impl TransportPeer {
         }
 
         // --- Extract a reference to the server's broadcast channel sender.
-        let tx = self.inner.read().await.server_tx.clone();
+        let tx = self.inner.read().await.from_server_tx.clone();
 
         // --- Start a task that will receive messages from the server's Broadcast channel
         // --- and send them to the peer's mpsc channel (`from_client_tx`). This allows for
@@ -115,6 +114,38 @@ impl TransportPeer {
         self.inner.write().await.task_bind_stdout = Some(tokio::spawn(async move {
             loop {
                 match stdout_rx.recv().await {
+                    Ok(message) => {
+                        if let Err(error) = tx.send(message) {
+                            let _ = Error::from(error).trace();
+                        }
+                    }
+                    Err(error) => {
+                        let _ = Error::from(error).trace();
+                    }
+                }
+            }
+        }));
+
+        Ok(())
+    }
+
+    /// Attach to the process stderr. Push every message received from the
+    /// `stderr` channel to the `from_server_tx` channel and wrap it in a
+    /// `JsonRpcMessage::Error` variant.
+    #[tracing::instrument(name = "TransportPeer::AttachStderr", skip(self))]
+    pub async fn attach_stderr(
+        &self,
+        mut stderr_rx: broadcast::Receiver<JsonRpcMessage>,
+    ) -> Result<()> {
+        // --- Extract a reference to the server's broadcast channel sender.
+        let tx = self.inner.read().await.from_server_tx.clone();
+
+        // --- Start a task that will receive messages from the server's Broadcast channel
+        // --- and send them to the peer's mpsc channel (`from_client_tx`). This allows for
+        // --- distict handling of messages sent by the server to the peer.
+        self.inner.write().await.task_bind_stdout = Some(tokio::spawn(async move {
+            loop {
+                match stderr_rx.recv().await {
                     Ok(message) => {
                         if let Err(error) = tx.send(message) {
                             let _ = Error::from(error).trace();
@@ -142,7 +173,15 @@ impl TransportPeer {
 
     /// Receive a message from the transport.
     pub async fn receive_message_from_server(&self) -> Option<JsonRpcMessage> {
-        match self.inner.read().await.server_tx.subscribe().recv().await {
+        match self
+            .inner
+            .read()
+            .await
+            .from_server_tx
+            .subscribe()
+            .recv()
+            .await
+        {
             Ok(message) => Some(message),
             Err(broadcast::error::RecvError::Closed) => None,
             Err(broadcast::error::RecvError::Lagged(_)) => None,
