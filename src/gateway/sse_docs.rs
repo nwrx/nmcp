@@ -2,19 +2,28 @@ use aide::transform::TransformOperation;
 use axum::Json;
 use rmcp::model::ServerJsonRpcMessage;
 
-/// Documentation for the GET /api/v1/servers/{name}/sse endpoint
-pub fn stream_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+/// Documentation for the GET /{name}/sse endpoint
+pub fn sse_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     op.id("getServerSse")
         .tag("Server")
         .summary("Server SSE")
         .description("Establishes a Server-Sent Events (SSE) connection to the server. This allows for real-time updates and notifications from the server. Returns a stream of JSON messages.")
 }
 
-/// Documentation for the POST /api/v1/servers/{name}/message endpoint
+/// Documentation for the POST /{name}/message endpoint
 pub fn message_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     op.id("postServerSseMessage")
         .tag("Server")
         .summary("Post SSE Message")
         .description("Sends a message to the server. The server will process the message and return a response.")
         .response::<200, Json<ServerJsonRpcMessage>>()
+}
+
+/// Documentation for the GET /{name}/logs endpoint
+pub fn logs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getServerLogs")
+        .tag("Server")
+        .summary("Get Server Logs")
+        .description("Retrieves the logs for the server. This is useful for debugging and monitoring server activity.")
+        .response::<200, String>()
 }

@@ -63,8 +63,6 @@ impl Gateway {
         let client = self.controller.get_client();
         let server = server.clone();
         let key = format!("{}-{}", client.default_namespace(), server.name_any());
-
-        // --- Check if the transport exists in the store.
         self.clone().transports.get(&key).await
     }
 

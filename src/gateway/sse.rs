@@ -2,12 +2,16 @@ use super::{sse_docs, GatewayContext};
 use crate::{Error, MCPServer, ResourceManager};
 use aide::axum::routing::{get_with, post_with};
 use aide::axum::{ApiRouter, IntoApiResponse};
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
+use axum::http::header;
 use axum::response::IntoResponse;
 use axum::Json;
+use futures::AsyncBufReadExt;
 use rmcp::model::ClientJsonRpcMessage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tokio_util::bytes;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -18,10 +22,7 @@ pub struct MessageQuery {
 
 /// Handler for GET /{name}/sse
 #[tracing::instrument(name = "GET /{name}/sse", skip_all)]
-async fn stream(
-    Path(name): Path<String>,
-    State(ctx): State<GatewayContext>,
-) -> impl IntoApiResponse {
+async fn sse(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> impl IntoApiResponse {
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
@@ -61,10 +62,61 @@ async fn message(
     .into_response()
 }
 
+/// Handler for `GET /{name}/logs`
+#[tracing::instrument(name = "GET /{name}/logs", skip_all)]
+async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> impl IntoApiResponse {
+    async {
+        let client = ctx.get_client().await;
+        let server = MCPServer::get_by_name(&client, &name).await?;
+        let server = server.request_server_up(&client).await?;
+
+        // --- Get the log stream for the server.
+        let stream = server.get_logs(&client).await?;
+        let stream = stream.lines();
+        let stream = futures::StreamExt::map(stream, |line| match line {
+            Ok(line) => Ok(bytes::Bytes::from(format!("{line}\n"))),
+            Err(e) => Err(std::io::Error::other(e)),
+        });
+
+        // --- Wrap the stream in a Body.
+        let body = Body::from_stream(stream);
+        let response = axum::response::Response::builder()
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .header(header::CONNECTION, "keep-alive")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(body)
+            .unwrap();
+
+        Ok::<_, Error>(response)
+    }
+    .await
+    .map_err(|e| e.trace())
+    .into_response()
+}
+
+/// Handler for `POST /{name}/shutdown`
+#[tracing::instrument(name = "POST /{name}/shutdown", skip_all)]
+async fn shutdown(
+    Path(name): Path<String>,
+    State(ctx): State<GatewayContext>,
+) -> impl IntoApiResponse {
+    async {
+        let client = ctx.get_client().await;
+        let server = MCPServer::get_by_name(&client, &name).await?;
+        let server = server.request_server_up(&client).await?;
+        let _ = server.shutdown(&client).await?;
+        Ok::<(), Error>(())
+    }
+    .await
+    .map_err(|e| e.trace())
+    .into_response()
+}
+
 /// Router for SSE-related endpoints
 pub fn router(ctx: GatewayContext) -> ApiRouter<()> {
     ApiRouter::new()
-        .api_route("/sse", get_with(stream, sse_docs::stream_docs))
+        .api_route("/sse", get_with(sse, sse_docs::sse_docs))
+        .api_route("/logs", get_with(logs, sse_docs::logs_docs))
         .api_route("/message", post_with(message, sse_docs::message_docs))
         .with_state(ctx)
 }
