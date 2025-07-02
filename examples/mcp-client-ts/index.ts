@@ -1,6 +1,7 @@
 /* eslint-disable unicorn/prefer-top-level-await */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { McpError } from '@modelcontextprotocol/sdk/types.js'
 import consola from 'consola'
 
 consola.wrapAll()
@@ -14,11 +15,17 @@ async function main() {
   const args = process.argv.slice(2)
   const url = new URL(args[0])
   const transport = new SSEClientTransport(url)
-  await client.connect(transport)
-  consola.log(`Connected to ${url.toString()}`)
 
-  const tools = await client.listTools()
-  consola.log(`Available tools: ${tools.tools.map(tool => tool.name).join(', ')}`)
+  try {
+    await client.connect(transport)
+    consola.log(`Connected to ${url.toString()}`)
+    const tools = await client.listTools()
+    consola.log(`Available tools: ${tools.tools.map(tool => tool.name).join(', ')}`)
+  }
+  catch (error) {
+    if (error instanceof McpError)
+      consola.error(`${error.message}`)
+  }
 }
 
 void main()
