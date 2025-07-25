@@ -2,12 +2,9 @@ use super::TransportPeer;
 use crate::{Error, MCPServer, Result, MCP_SERVER_CONTAINER_NAME};
 use crate::{IntoResource, DEFAULT_POD_BUFFER_SIZE};
 use k8s_openapi::api::core::v1;
-use kube::api::{AttachParams, AttachedProcess, LogParams};
+use kube::api::{AttachParams, AttachedProcess};
 use kube::{Api, Client};
-use rmcp::model::{
-    ClientJsonRpcMessage, ErrorCode, ErrorData, JsonRpcError, JsonRpcMessage, JsonRpcVersion2_0,
-    NumberOrString,
-};
+use rmcp::model;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -21,12 +18,12 @@ pub struct TransportAttachedProcess {
     server: MCPServer,
     peers: Arc<RwLock<HashMap<String, TransportPeer>>>,
 
-    stdin_rx: broadcast::Receiver<ClientJsonRpcMessage>,
-    stdin_tx: broadcast::Sender<ClientJsonRpcMessage>,
-    stdout_rx: broadcast::Receiver<JsonRpcMessage>,
-    stdout_tx: broadcast::Sender<JsonRpcMessage>,
-    stderr_rx: broadcast::Receiver<JsonRpcMessage>,
-    stderr_tx: broadcast::Sender<JsonRpcMessage>,
+    stdin_rx: broadcast::Receiver<model::ClientJsonRpcMessage>,
+    stdin_tx: broadcast::Sender<model::ClientJsonRpcMessage>,
+    stdout_rx: broadcast::Receiver<model::JsonRpcMessage>,
+    stdout_tx: broadcast::Sender<model::JsonRpcMessage>,
+    stderr_rx: broadcast::Receiver<model::JsonRpcMessage>,
+    stderr_tx: broadcast::Sender<model::JsonRpcMessage>,
 
     task_attach_stdin: Option<JoinHandle<Result<()>>>,
     task_attach_stdout: Option<JoinHandle<Result<()>>>,
@@ -80,7 +77,7 @@ impl TransportAttachedProcess {
                         let data = String::from_utf8_lossy(data).to_string();
                         for line in data.lines() {
                             if !line.trim().is_empty() {
-                                let message: JsonRpcMessage = serde_json::from_str(line)?;
+                                let message: model::JsonRpcMessage = serde_json::from_str(line)?;
                                 let _ = tx.send(message).map_err(Error::from)?;
                             }
                         }
@@ -110,17 +107,33 @@ impl TransportAttachedProcess {
                         let data = String::from_utf8_lossy(data).to_string();
                         for line in data.lines() {
                             if !line.trim().is_empty() {
-                                let error = ErrorData {
-                                    message: line.to_string().into(),
-                                    code: ErrorCode::INTERNAL_ERROR,
-                                    data: None,
+                                // let error = ErrorData {
+                                //     message: line.to_string().into(),
+                                //     code: ErrorCode::INTERNAL_ERROR,
+                                //     data: None,
+                                // };
+                                // let error = JsonRpcError {
+                                //     error,
+                                //     id: NumberOrString::Number(0),
+                                //     jsonrpc: JsonRpcVersion2_0,
+                                // };
+                                // let message = JsonRpcMessage::Error(error);
+                                // let _ = tx.send(message).map_err(Error::from)?;
+
+                                let notification = model::Notification {
+                                    method: "notifications/message".to_string(),
+                                    params: serde_json::Map::from_iter(vec![(
+                                        "message".to_string(),
+                                        serde_json::Value::String(line.to_string()),
+                                    )]),
+                                    extensions: model::Extensions::new(),
                                 };
-                                let error = JsonRpcError {
-                                    error,
-                                    id: NumberOrString::Number(0),
-                                    jsonrpc: JsonRpcVersion2_0,
+                                let notification = model::JsonRpcNotification {
+                                    jsonrpc: model::JsonRpcVersion2_0,
+                                    notification,
                                 };
-                                let message = JsonRpcMessage::Error(error);
+                                let message: model::JsonRpcMessage<_, _, model::Notification> =
+                                    model::JsonRpcMessage::Notification(notification);
                                 let _ = tx.send(message).map_err(Error::from)?;
                             }
                         }
@@ -141,8 +154,8 @@ impl TransportAttachedProcess {
     {
         let mut rx = self.stdin_rx.resubscribe();
         let stderr_tx = self.stderr_tx.clone();
-        let client = self.client.clone();
-        let server = self.server.clone();
+        // let client = self.client.clone();
+        // let server = self.server.clone();
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
@@ -158,29 +171,37 @@ impl TransportAttachedProcess {
                             // --- If an error occurs while attempting to write to stdin, this may indicate
                             // --- that the process has terminated or the pipe is broken. In this case, get the
                             // --- last logs from the pod and push them to the stderr channel.
-                            Err(..) => {
-                                let logs = Api::<v1::Pod>::namespaced(
-                                    client.clone(),
-                                    client.default_namespace(),
-                                )
-                                .logs(
-                                    &<MCPServer as IntoResource<v1::Pod>>::resource_name(&server),
-                                    &LogParams::default(),
-                                )
-                                .await
-                                .map_err(Error::from)?;
+                            Err(error) => {
+                                // let logs = Api::<v1::Pod>::namespaced(
+                                //     client.clone(),
+                                //     client.default_namespace(),
+                                // )
+                                // .logs(
+                                //     &<MCPServer as IntoResource<v1::Pod>>::resource_name(&server),
+                                //     &LogParams::default(),
+                                // )
+                                // .await
+                                // .map_err(Error::from)?;
 
-                                let error = ErrorData {
-                                    message: logs.into(),
-                                    code: ErrorCode::INTERNAL_ERROR,
+                                if error.kind() == std::io::ErrorKind::BrokenPipe {
+                                    tracing::warn!(
+                                        "Stdin pipe is broken, process may have terminated"
+                                    );
+                                } else {
+                                    tracing::error!("Failed to write to stdin: {}", error);
+                                }
+
+                                let error = model::ErrorData {
+                                    message: error.to_string().into(),
+                                    code: model::ErrorCode::INTERNAL_ERROR,
                                     data: None,
                                 };
-                                let error = JsonRpcError {
+                                let error = model::JsonRpcError {
                                     error,
-                                    id: NumberOrString::Number(0),
-                                    jsonrpc: JsonRpcVersion2_0,
+                                    id: model::NumberOrString::Number(0),
+                                    jsonrpc: model::JsonRpcVersion2_0,
                                 };
-                                let message = JsonRpcMessage::Error(error);
+                                let message = model::JsonRpcMessage::Error(error);
                                 let _ = stderr_tx.send(message).map_err(Error::from);
                             }
                         }
