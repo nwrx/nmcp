@@ -54,7 +54,7 @@ where
 
 /// Thread-safe collection of tasks that can be used to cache results of asynchronous computations.
 /// This struct wraps a `JoinHandle` that can resolve to a value or an error. Each task can be in
-/// one of the following states: `Pending`, `Aborted`, `Error`, or `Value`.
+/// one of the following states: `Pending`, `Aborted`, `Rejected`, or `Resolved`.
 #[derive(Debug)]
 pub struct Task<V, E>(TaskState<V, E>);
 
@@ -81,7 +81,7 @@ impl<V, E> Task<V, E> {
     /// and then update the task's state accordingly. If a `JoinError` occurs, it will be set
     /// as the task's state.
     ///
-    pub async fn resolve(&mut self) -> &Self {
+    pub async fn resolved(&mut self) -> &Self {
         if let TaskState::Pending(handle) = &mut self.0 {
             match handle.await {
                 Ok(result) => {

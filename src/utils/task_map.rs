@@ -9,7 +9,11 @@ pub type TaskEntry<V, E> = Arc<RwLock<Task<V, E>>>;
 
 /// A concurrent map that can store values or tasks that will resolve to values.
 /// This is useful for caching async computations and avoiding duplicate work.
-pub struct TaskMap<K, V, E = ()>(Arc<Mutex<HashMap<K, TaskEntry<V, E>>>>);
+#[derive(Clone)]
+pub struct TaskMap<K, V, E = ()> {
+    inner: Arc<Mutex<HashMap<K, TaskEntry<V, E>>>>,
+    length: usize,
+}
 
 impl Default for TaskMap<String, String, ()> {
     fn default() -> Self {
@@ -19,17 +23,11 @@ impl Default for TaskMap<String, String, ()> {
 
 impl Debug for TaskMap<String, String, ()> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let guard = self.0.blocking_lock();
+        let guard = self.inner.blocking_lock();
         f.debug_struct("TaskMap")
             .field("len", &guard.len())
             .field("is_empty", &guard.is_empty())
             .finish()
-    }
-}
-
-impl<K, V, E> Clone for TaskMap<K, V, E> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }
 
@@ -39,48 +37,50 @@ where
 {
     /// Create a new empty `HashMapAsync`
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(HashMap::new())))
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+            length: 0,
+        }
     }
 
     /// The length of the map, i.e., the number of keys.
     pub fn len(&self) -> usize {
-        let guard = self.0.blocking_lock();
-        guard.len()
+        self.length
     }
 
     /// Check if the map is empty.
     pub fn is_empty(&self) -> bool {
-        let guard = self.0.blocking_lock();
-        guard.is_empty()
+        self.len() == 0
     }
 
     /// Check if a key exists in either values or tasks
     pub async fn contains_key(&self, key: &K) -> bool {
-        let guard = self.0.lock().await;
+        let guard = self.inner.lock().await;
         let result = guard.get(key);
         result.is_some()
             && match result {
-                Some(task) => task.write().await.resolve().await.peek().await.is_some(),
+                Some(task) => task.write().await.resolved().await.peek().await.is_some(),
                 None => false,
             }
     }
 
     /// Get the result of a task if it exists.
     pub async fn get_ref(&mut self, key: &K) -> Option<Result<Arc<V>, Arc<E>>> {
-        let guard = self.0.lock().await;
+        let guard = self.inner.lock().await;
         match guard.get(key) {
             None => None,
-            Some(task) => task.write().await.resolve().await.peek().await,
+            Some(task) => task.write().await.resolved().await.peek().await,
         }
     }
 
     /// Set a value for a key, replacing any existing value.
     pub async fn set(&mut self, key: K, value: V) -> Result<Arc<V>, Arc<E>> {
-        let mut guard = self.0.lock().await;
+        let mut guard = self.inner.lock().await;
         let task = Task::value(value);
         let task = Arc::new(RwLock::new(task));
         let _ = guard.insert(key.clone(), task.clone());
         let result = task.write().await.peek().await.unwrap();
+        self.length = guard.len();
         result
     }
 
@@ -90,22 +90,21 @@ where
         key: K,
         task: impl Into<Task<V, E>>,
     ) -> Option<Result<Arc<V>, Arc<E>>> {
-        let mut guard = self.0.lock().await;
+        let mut guard = self.inner.lock().await;
         let task = Arc::new(RwLock::new(task.into()));
         let _ = guard.insert(key.clone(), task.clone());
-
-        // Wait for the task to resolve and return its value.
-        let result = task.write().await.resolve().await.peek().await;
+        let result = task.write().await.resolved().await.peek().await;
+        self.length = guard.len();
         result
     }
 
     /// Get a value or set it if it doesn't exist.
     pub async fn get_ref_or_set(&mut self, key: &K, value: V) -> Result<Arc<V>, Arc<E>> {
-        let mut guard = self.0.lock().await;
+        let mut guard = self.inner.lock().await;
 
         // --- Check if the key exists and the value is Some.
         if let Some(task) = guard.get(key) {
-            if let Some(result) = task.write().await.resolve().await.peek().await {
+            if let Some(result) = task.write().await.resolved().await.peek().await {
                 return result;
             }
         }
@@ -132,11 +131,11 @@ where
         V: Send + 'static,
         E: Send + 'static,
     {
-        let mut tasks = self.0.lock().await;
+        let mut tasks = self.inner.lock().await;
 
         // --- Check if the key exists and the value is Some.
         if let Some(task) = tasks.get(key) {
-            if let Some(result) = task.write().await.resolve().await.peek().await {
+            if let Some(result) = task.write().await.resolved().await.peek().await {
                 return Some(result);
             }
         }
@@ -147,22 +146,38 @@ where
         let _ = tasks.insert(key.clone(), task.clone());
 
         // --- Wait for the task to resolve and return its value.
-        let result = task.write().await.resolve().await.peek().await;
+        let result = task.write().await.resolved().await.peek().await;
         result
     }
 
     /// Remove a key from the map and return its value or error.
     pub async fn remove(&mut self, key: &K) -> Option<Result<Arc<V>, Arc<E>>> {
-        let mut guard = self.0.lock().await;
-        match guard.remove(key) {
+        let mut guard = self.inner.lock().await;
+        let result = match guard.remove(key) {
             None => None,
-            Some(task) => task.write().await.resolve().await.peek().await,
-        }
+            Some(task) => task.write().await.resolved().await.peek().await,
+        };
+        self.length = guard.len();
+        result
     }
 
     /// Discard a key from the map without returning its value or error.
     pub async fn discard(&mut self, key: &K) {
-        let _ = self.0.lock().await.remove(key);
+        let mut guard = self.inner.lock().await;
+        let value = guard.remove(key);
+        drop(value);
+        self.length = guard.len();
+    }
+
+    /// Iterate over the entries in the map, yielding key-value pairs.
+    pub async fn iter_tasks(&self) -> impl Iterator<Item = (K, TaskEntry<V, E>)> {
+        let guard = self.inner.lock();
+        guard
+            .await
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 
@@ -174,11 +189,11 @@ where
 {
     /// Get the result of a task if it exists and get owned clone of the underlying value.
     pub async fn get(&mut self, key: &K) -> Option<Result<V, E>> {
-        let guard = self.0.lock().await;
+        let guard = self.inner.lock().await;
         match guard.get(key) {
             None => None,
             Some(task) => {
-                let result = task.write().await.resolve().await.peek().await;
+                let result = task.write().await.resolved().await.peek().await;
                 match result {
                     Some(Ok(value)) => Some(Ok((*value).clone())),
                     Some(Err(error)) => Some(Err((*error).clone())),
