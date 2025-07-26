@@ -17,12 +17,3 @@ impl Default for ErrorMessage {
         Self("An unexpected error occurred".to_string())
     }
 }
-
-/// Add `Suggestions` to the error report so that the client can understand how to resolve the error.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
-pub struct Suggestion(pub String);
-impl Display for Suggestion {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
