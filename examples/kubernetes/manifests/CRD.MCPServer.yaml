@@ -143,13 +143,14 @@ spec:
                   If you're unsure which transport type to use, check the documentation for the image you're using. Most images will support both transport types, but some may have specific requirements or limitations.
                 properties:
                   port:
-                    description: Port number for SSE transport, required when type is 'sse'
+                    description: Port number for SSE transport, required when type is 'sse' or 'streamable-http'
                     type: integer
                   type:
                     description: Transport type
                     enum:
                     - stdio
                     - sse
+                    - streamable-http
                     type: string
                 required:
                 - type
@@ -194,6 +195,11 @@ spec:
                   - type
                   type: object
                 type: array
+              createdAt:
+                default: '1970-01-01T00:00:00Z'
+                description: The last time the server was started
+                format: date-time
+                type: string
               currentConnections:
                 description: Number of current connections to the server
                 format: uint32
@@ -209,18 +215,23 @@ spec:
                 enum:
                 - Idle
                 - Requested
-                - Running
                 - Starting
+                - Ready
                 - Stopping
-                - Failed
+                - Degraded
+                type: string
+              requestedAt:
+                description: The last time the server was requested to start
+                format: date-time
+                nullable: true
                 type: string
               startedAt:
-                description: Time when the server was started
+                description: The last time the server was started
                 format: date-time
                 nullable: true
                 type: string
               stoppedAt:
-                description: Time when the server was stopped
+                description: The last time the server was stopped
                 format: date-time
                 nullable: true
                 type: string
