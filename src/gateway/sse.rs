@@ -35,7 +35,6 @@ async fn sse(
         let server = MCPServer::get_by_name(&client, &name).await?;
         let timeout = query.timeout.map(Duration::from_secs);
         server.request(&client).await?;
-        server.notify_request(&client).await?;
         server.notify_connect(&client).await?;
         server.wait_until_ready(&client, timeout).await?;
         let mut transport = ctx.get_transport(&server)?;
@@ -75,7 +74,6 @@ async fn message(
         let server = MCPServer::get_by_name(&client, &name).await?;
         let timeout = query.timeout.map(Duration::from_secs);
         server.request(&client).await?;
-        server.notify_request(&client).await?;
         server.wait_until_ready(&client, timeout).await?;
         let transport = ctx.get_transport(&server)?;
         let peer = transport.get_peer(query.session_id).await?;
@@ -87,12 +85,40 @@ async fn message(
     .into_response()
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestQuery {
+    /// The maximum time to wait for the server to be ready.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    timeout: Option<u64>,
+}
+
+/// Handler for POST /{name}/request
+#[tracing::instrument(name = "POST /{name}/request", skip_all)]
+async fn request(
+    Path(name): Path<String>,
+    Query(query): Query<RequestQuery>,
+    State(ctx): State<GatewayContext>,
+) -> impl IntoApiResponse {
+    async {
+        let client = ctx.get_client().await;
+        let server = MCPServer::get_by_name(&client, &name).await?;
+        let timeout = query.timeout.map(Duration::from_secs);
+        server.request(&client).await?;
+        server.wait_until_ready(&client, timeout).await?;
+        Ok::<(), Error>(())
+    }
+    .await
+    .into_response()
+}
+
 /// Handler for `GET /{name}/logs`
 #[tracing::instrument(name = "GET /{name}/logs", skip_all)]
 async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> impl IntoApiResponse {
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
+        server.wait_until_ready(&client, None).await?;
 
         // --- Get the log stream for the server.
         let stream = server.get_logs(&client).await?;
@@ -140,5 +166,6 @@ pub fn router(ctx: GatewayContext) -> ApiRouter<()> {
         .api_route("/sse", get_with(sse, sse_docs::sse_docs))
         .api_route("/logs", get_with(logs, sse_docs::logs_docs))
         .api_route("/message", post_with(message, sse_docs::message_docs))
+        .api_route("/request", post_with(request, sse_docs::request_docs))
         .with_state(ctx)
 }

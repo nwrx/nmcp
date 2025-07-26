@@ -27,3 +27,12 @@ pub fn logs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .description("Retrieves the logs for the server. This is useful for debugging and monitoring server activity.")
         .response::<200, String>()
 }
+
+/// Documentation for the POST /{name}/request endpoint
+pub fn request_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("postServerRequest")
+        .tag("Server")
+        .summary("Request Server")
+        .description("Requests the server and waits until it's ready. This is useful for ensuring the server is available before performing other operations. Does not return or send any data.")
+        .response::<200, ()>()
+}
