@@ -13,7 +13,7 @@ impl From<kube::Error> for Error {
                     .unwrap_or_default()
                     .replace(' ', "_")
                     .to_uppercase();
-                let name = format!("E_KUBE_API_{status_text}");
+                let name = format!("E_KUBE_{status_text}");
                 let source = ErrorInner::KubeError(source);
                 Self::new(source)
                     .with_name(name)
@@ -60,6 +60,7 @@ impl From<kube::Error> for Error {
                     Self::new(source).with_name("E_KUBE_UPGRADE_CONNECTION_GET_PENDING_UPGRADE")
                 }
             },
+
             _ => {
                 let message = format!("{source:?}");
                 let source = ErrorInner::KubeError(source);
