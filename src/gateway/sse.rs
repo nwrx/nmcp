@@ -26,16 +26,20 @@ async fn sse(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> imp
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
-        let server = server.request_server_up(&client).await?;
-        let server = server.register_server_request(&client).await?;
-        let transport = ctx.get_or_create_transport(&server).await?;
+        server.request(&client).await?;
+        server.notify_request(&client).await?;
+        server.notify_connect(&client).await?;
+        let mut transport = ctx.get_transport(&server).await?;
         let peer = transport.subscribe().await?;
         let endpoint = format!("/{name}/message");
-        let stream = peer.sse(endpoint).await;
+
+        // --- Create the handler for the SSE stream closure.
+        let server = server.clone();
+        let on_close = || tokio::spawn(async move { server.notify_disconnect(&client).await });
+        let stream = peer.sse(endpoint, on_close).await;
         Ok::<_, Error>(stream)
     }
     .await
-    .map_err(|e| e.trace())
     .into_response()
 }
 
@@ -50,9 +54,9 @@ async fn message(
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
-        let server = server.request_server_up(&client).await?;
-        let server = server.register_server_request(&client).await?;
-        let transport = ctx.get_or_create_transport(&server).await?;
+        server.request(&client).await?;
+        server.notify_request(&client).await?;
+        let transport = ctx.get_transport(&server).await?;
         let peer = transport.get_peer(query.session_id).await?;
         let result = peer.send_request(request).await?;
         Ok::<_, Error>(Json(result))
@@ -68,7 +72,6 @@ async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> im
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
-        let server = server.request_server_up(&client).await?;
 
         // --- Get the log stream for the server.
         let stream = server.get_logs(&client).await?;
@@ -78,7 +81,7 @@ async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> im
             Err(e) => Err(std::io::Error::other(e)),
         });
 
-        // --- Wrap the stream in a Body.
+        // --- Wrap the stream in an axum Body.
         let body = Body::from_stream(stream);
         let response = axum::response::Response::builder()
             .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
@@ -87,10 +90,10 @@ async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> im
             .body(body)
             .unwrap();
 
+        // --- Send the response.
         Ok::<_, Error>(response)
     }
     .await
-    .map_err(|e| e.trace())
     .into_response()
 }
 
@@ -103,12 +106,10 @@ async fn shutdown(
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
-        let server = server.request_server_up(&client).await?;
-        let _ = server.shutdown(&client).await?;
+        server.down(&client).await?;
         Ok::<(), Error>(())
     }
     .await
-    .map_err(|e| e.trace())
     .into_response()
 }
 

@@ -1,8 +1,6 @@
-use super::MCP_SERVER_OPERATOR_MANAGER;
-use crate::utils::{Error, Result};
-use crate::{MCPPool, MCPServer};
+use crate::{Error, Result, NMCP_OPERATOR};
 use k8s_openapi::NamespaceResourceScope;
-use kube::api::{Api, ListParams, ObjectMeta, Patch, PatchParams, PostParams};
+use kube::api::{Api, ListParams, Patch, PatchParams, PostParams};
 use kube::core::object::{HasSpec, HasStatus};
 use kube::{Client, Resource, ResourceExt};
 use serde::de::DeserializeOwned;
@@ -33,7 +31,7 @@ where
     fn apply(&self, client: &Client) -> impl Future<Output = Result<Self>> + Send {
         async {
             let post_params = PostParams {
-                field_manager: Some(MCP_SERVER_OPERATOR_MANAGER.to_string()),
+                field_manager: Some(NMCP_OPERATOR.to_string()),
                 ..Default::default()
             };
             Api::<Self>::namespaced(client.clone(), client.default_namespace())
@@ -55,6 +53,7 @@ where
     }
 
     /// Get the status of the specific resource from the Kubernetes cluster.
+    #[tracing::instrument(name = "GetStatus", skip(client))]
     fn get_status(&self, client: &Client) -> impl Future<Output = Result<Self::Status>> + Send {
         async {
             let statut = Api::<Self>::namespaced(client.clone(), client.default_namespace())
@@ -110,7 +109,7 @@ where
             Api::<Self>::namespaced(client.clone(), client.default_namespace())
                 .patch(
                     &self.name_any(),
-                    &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
+                    &PatchParams::apply(NMCP_OPERATOR),
                     &Patch::Merge(patch),
                 )
                 .await
@@ -129,7 +128,7 @@ where
             Api::<Self>::namespaced(client.clone(), client.default_namespace())
                 .patch_status(
                     &self.name_any(),
-                    &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
+                    &PatchParams::apply(NMCP_OPERATOR),
                     &Patch::Merge(&patch),
                 )
                 .await
@@ -158,32 +157,6 @@ where
                 Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
                 Err(error) => Err(Error::from(error)),
             }
-        }
-    }
-}
-
-impl ResourceManager for MCPPool {
-    fn new(name: &str, spec: Self::Spec) -> Self {
-        Self {
-            metadata: ObjectMeta {
-                name: Some(name.to_string()),
-                ..Default::default()
-            },
-            spec,
-            status: Default::default(),
-        }
-    }
-}
-
-impl ResourceManager for MCPServer {
-    fn new(name: &str, spec: Self::Spec) -> Self {
-        Self {
-            metadata: ObjectMeta {
-                name: Some(name.to_string()),
-                ..Default::default()
-            },
-            spec,
-            status: Default::default(),
         }
     }
 }

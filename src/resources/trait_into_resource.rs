@@ -1,5 +1,4 @@
-use super::MCP_SERVER_OPERATOR_MANAGER;
-use crate::{Error, Result};
+use crate::{Error, Result, NMCP_OPERATOR};
 use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Patch, PatchParams};
 use kube::core::object::{HasSpec, HasStatus};
@@ -33,7 +32,7 @@ where
             Api::<U>::namespaced(client.clone(), client.default_namespace())
                 .patch(
                     &self.resource_name(),
-                    &PatchParams::apply(MCP_SERVER_OPERATOR_MANAGER),
+                    &PatchParams::apply(NMCP_OPERATOR),
                     &Patch::Apply(self.resource()),
                 )
                 .await

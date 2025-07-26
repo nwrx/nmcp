@@ -1,24 +1,16 @@
+mod operator;
+
 use crate::{get_kube_client, Kubeconfig, Result};
 use clap::Parser;
 use kube::Client;
 use std::fmt::Debug;
 
-mod into_pod;
-mod into_resource;
-mod into_service;
-mod manager;
-mod operator;
-mod status;
-
-pub use into_resource::*;
-pub use manager::*;
-
 /// The name of the Kubernetes operator manager. Used to identify the operator in the Kubernetes API.
-pub const MCP_SERVER_OPERATOR_MANAGER: &str = "mcpserver.nmcp.nwrx.io/operator";
+pub const NMCP_OPERATOR: &str = "mcpserver.nmcp.nwrx.io/operator";
 
 /// The finalizer name for `MCPServer` resources. This is used to ensure that the operator cleans up
 /// resources before deleting the `MCPServer` and it's associated resources.
-pub const MCP_SERVER_FINALIZER: &str = "mcpserver.nmcp.nwrx.io/finalizer";
+pub const NMCP_FINALIZER: &str = "mcpserver.nmcp.nwrx.io/finalizer";
 
 /// Configuration for the Kubernetes operator
 #[derive(Debug, Clone, Parser, Default)]

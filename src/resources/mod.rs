@@ -1,11 +1,21 @@
+mod pool_controller;
 mod pool_spec;
 mod pool_status;
+mod server_condition;
+mod server_controller;
+mod server_into_pod;
+mod server_into_service;
 mod server_spec;
 mod server_status;
 mod server_transport;
+mod trait_into_resource;
+mod trait_manager;
 
 pub use pool_spec::{MCPPool, MCPPoolSpec};
-pub use pool_status::MCPPoolStatus;
+pub use pool_status::*;
+pub use server_condition::*;
 pub use server_spec::{MCPServer, MCPServerSpec};
-pub use server_status::{MCPServerConditionType, MCPServerPhase, MCPServerStatus};
+pub use server_status::{MCPServerPhase, MCPServerStatus};
 pub use server_transport::MCPServerTransport;
+pub use trait_into_resource::IntoResource;
+pub use trait_manager::ResourceManager;
