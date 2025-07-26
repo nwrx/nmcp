@@ -12,6 +12,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta;
 use kube::api::LogParams;
 use kube::api::ObjectMeta;
 use kube::{Api, Client};
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MCPServerPodStatus {
@@ -134,6 +135,14 @@ impl MCPServer {
         Ok(())
     }
 
+    /// Clear the connected clients count.
+    pub async fn clear_connected_clients(&self, client: &Client) -> Result<()> {
+        let mut status = self.get_status(client).await?;
+        status.current_connections = 0;
+        let _ = self.patch_status(client, status).await?;
+        Ok(())
+    }
+
     /***********************************************************************/
     /* Pod                                                                 */
     /***********************************************************************/
@@ -221,6 +230,7 @@ impl MCPServer {
                 let state = PodScheduledReason::Scheduled;
                 let condition = Condition::PodScheduled(state);
                 self.push_condition(client, condition).await?;
+                self.notify_started(client).await?;
                 let _ = <Self as IntoResource<v1::Pod>>::patch_resource(self, client).await?;
             }
             MCPServerPodStatus::Failed { message, .. } => {
@@ -265,11 +275,25 @@ impl MCPServer {
     pub async fn reconcile_status_with_pod(&self, client: &Client) -> Result<()> {
         match self.get_pod_status(client).await? {
             MCPServerPodStatus::Running => {
+                let reason = PodScheduledReason::Scheduled;
+                let condition = Condition::PodScheduled(reason);
+                self.push_condition(client, condition).await?;
+                let condition = Condition::PodReady(None);
+                self.push_condition(client, condition).await?;
                 self.set_phase(client, Phase::Ready).await?;
             }
-            MCPServerPodStatus::NotFound => {
-                self.set_phase(client, Phase::Idle).await?;
-            }
+            MCPServerPodStatus::NotFound => match self.get_status(client).await?.phase {
+                Phase::Stopping => {
+                    let reason = PodScheduledReason::Terminating;
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Idle).await?;
+                    self.clear_connected_clients(client).await?;
+                }
+                _ => {
+                    // Wait for the pod to be created.
+                }
+            },
             MCPServerPodStatus::Pending => {
                 let reason = PodScheduledReason::Scheduled;
                 let condition = Condition::PodScheduled(reason);
@@ -277,9 +301,7 @@ impl MCPServer {
                 self.set_phase(client, Phase::Starting).await?;
             }
             MCPServerPodStatus::Failed { message, .. } => {
-                let error = Error::generic(message.unwrap_or("Pod failed to start".to_string()))
-                    .with_name("E_POD_FAILED")
-                    .with_status(StatusCode::SERVICE_UNAVAILABLE);
+                let error = Error::generic(message.unwrap_or("Pod failed to start".to_string()));
                 let reason = PodScheduledReason::Failed(error);
                 let condition = Condition::PodScheduled(reason);
                 self.push_condition(client, condition).await?;
@@ -292,9 +314,7 @@ impl MCPServer {
                 self.set_phase(client, Phase::Idle).await?;
             }
             MCPServerPodStatus::Unknown => {
-                let error = Error::generic("Pod status is unknown")
-                    .with_name("E_POD_UNKNOWN")
-                    .with_status(StatusCode::SERVICE_UNAVAILABLE);
+                let error = Error::generic("Pod status is unknown");
                 let reason = PodScheduledReason::Failed(error);
                 let condition = Condition::PodScheduled(reason);
                 self.push_condition(client, condition).await?;
@@ -340,11 +360,13 @@ impl MCPServer {
         let is_stale = elapsed_secs > idle_timeout as i64;
 
         // --- Ensure we are tracking the `stale` condition in the server status.
-        if is_stale {
-            let reason = StaleReason::IdleTimeout;
-            let condition = Condition::Stale(reason);
-            self.push_condition(client, condition).await?;
-        }
+        let reason = if is_stale {
+            StaleReason::IdleTimeout
+        } else {
+            StaleReason::NotStale
+        };
+        let condition = Condition::Stale(reason);
+        self.push_condition(client, condition).await?;
 
         Ok(is_stale)
     }
@@ -384,6 +406,36 @@ impl MCPServer {
         Ok(())
     }
 
+    /// Return a `Future` that will finish once the server is in the `Ready` phase.
+    pub async fn wait_until_ready(&self, client: &Client, timeout: Option<Duration>) -> Result<()> {
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
+        let start_time = std::time::Instant::now();
+
+        loop {
+            let status = self.get_status(client).await?;
+            match status.phase {
+                Phase::Ready => return Ok(()),
+                Phase::Requested | Phase::Starting | Phase::Degraded => {
+                    let _ = interval.tick().await;
+                }
+                Phase::Idle | Phase::Stopping => {
+                    return Err(Error::generic("Server is idle")
+                        .with_name("E_SERVER_IDLE_STALE")
+                        .with_status(StatusCode::SERVICE_UNAVAILABLE));
+                }
+            }
+
+            // --- Check for timeout.
+            if let Some(timeout) = timeout {
+                if start_time.elapsed() >= timeout {
+                    return Err(Error::generic("Server did not become ready in time")
+                        .with_name("E_SERVER_NOT_READY")
+                        .with_status(StatusCode::REQUEST_TIMEOUT));
+                }
+            }
+        }
+    }
+
     /***********************************************************************/
     /* Actions                                                             */
     /***********************************************************************/
@@ -392,7 +444,7 @@ impl MCPServer {
     pub async fn request(&self, client: &Client) -> Result<()> {
         match self.get_status(client).await?.phase {
             Phase::Ready | Phase::Requested | Phase::Starting => Ok(()),
-            Phase::Idle => {
+            Phase::Idle | Phase::Degraded | Phase::Stopping => {
                 let reason = RequestReqson::Connection;
                 let condition = Condition::Requested(reason);
                 self.clear_conditions(client).await?;
@@ -401,11 +453,24 @@ impl MCPServer {
                 self.notify_requested(client).await?;
                 Ok(())
             }
-            _ => {
-                let error = Error::generic("Server cannot be requested to start")
-                    .with_name("E_SERVER_CANNOT_START")
-                    .with_status(StatusCode::BAD_REQUEST);
-                Err(error)
+        }
+    }
+
+    /// Request the server to stop.
+    pub async fn shutdown(&self, client: &Client) -> Result<()> {
+        match self.get_status(client).await?.phase {
+            Phase::Idle | Phase::Stopping => Ok(()),
+            Phase::Ready | Phase::Starting | Phase::Degraded => {
+                let reason = StaleReason::ManualShutdown;
+                let condition = Condition::Stale(reason);
+                self.push_condition(client, condition).await?;
+                self.set_phase(client, Phase::Stopping).await?;
+                Ok(())
+            }
+            Phase::Requested => {
+                self.clear_conditions(client).await?;
+                self.set_phase(client, Phase::Idle).await?;
+                Ok(())
             }
         }
     }

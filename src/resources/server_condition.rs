@@ -14,6 +14,8 @@ pub enum MCPServerStaleReason {
     MaxUptimeExceeded,
     /// The server is stale because the configuration has changed
     Outdated,
+    /// The server is not stale and is still running
+    NotStale,
 }
 
 impl Display for MCPServerStaleReason {
@@ -116,7 +118,14 @@ impl From<MCPServerCondition> for v1::Condition {
                 reason: reason.to_string(),
                 observed_generation: None,
                 last_transition_time: v1::Time(Utc::now()),
-                status: "True".to_string(),
+                status: match reason {
+                    MCPServerStaleReason::ManualShutdown
+                    | MCPServerStaleReason::IdleTimeout
+                    | MCPServerStaleReason::MaxUptimeExceeded
+                    | MCPServerStaleReason::Outdated => "True",
+                    MCPServerStaleReason::NotStale => "False",
+                }
+                .to_owned(),
                 message: match reason {
                     MCPServerStaleReason::ManualShutdown => {
                         "Server is stale due to manual shutdown".to_string()
@@ -130,6 +139,7 @@ impl From<MCPServerCondition> for v1::Condition {
                     MCPServerStaleReason::Outdated => {
                         "Server is stale due to outdated configuration".to_string()
                     }
+                    MCPServerStaleReason::NotStale => "Server is not stale".to_string(),
                 },
             },
             MCPServerCondition::PodScheduled(state) => Self {

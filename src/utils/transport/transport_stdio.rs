@@ -150,10 +150,8 @@ impl TransportAttachedProcess {
     where
         T: AsyncWriteExt + Send + Unpin + 'static,
     {
-        let mut rx = self.stdin_rx.resubscribe();
         let tx = self.stdout_tx.clone();
-        // let client = self.client.clone();
-        // let server = self.server.clone();
+        let mut rx = self.stdin_rx.resubscribe();
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
@@ -170,36 +168,19 @@ impl TransportAttachedProcess {
                             // --- that the process has terminated or the pipe is broken. In this case, get the
                             // --- last logs from the pod and push them to the stderr channel.
                             Err(error) => {
-                                // let logs = Api::<v1::Pod>::namespaced(
-                                //     client.clone(),
-                                //     client.default_namespace(),
-                                // )
-                                // .logs(
-                                //     &<MCPServer as IntoResource<v1::Pod>>::resource_name(&server),
-                                //     &LogParams::default(),
-                                // )
-                                // .await
-                                // .map_err(Error::from)?;
-
                                 if error.kind() == std::io::ErrorKind::BrokenPipe {
-                                    tracing::warn!(
-                                        "Stdin pipe is broken, process may have terminated"
-                                    );
+                                    tracing::warn!("Stdin pipe is broken");
                                 } else {
                                     tracing::error!("Failed to write to stdin: {}", error);
                                 }
-
-                                let error = model::ErrorData {
-                                    message: error.to_string().into(),
-                                    code: model::ErrorCode::INTERNAL_ERROR,
-                                    data: None,
-                                };
-                                let error = model::JsonRpcError {
-                                    error,
+                                let message = model::JsonRpcMessage::Error(model::JsonRpcError {
+                                    error: model::ErrorData::internal_error(
+                                        error.to_string(),
+                                        None,
+                                    ),
                                     id: model::NumberOrString::Number(0),
                                     jsonrpc: model::JsonRpcVersion2_0,
-                                };
-                                let message = model::JsonRpcMessage::Error(error);
+                                });
                                 let _ = tx.send(message).map_err(Error::from);
                             }
                         }
@@ -282,7 +263,7 @@ impl TransportAttachedProcess {
     pub async fn get_peer(&self, id: &String) -> Result<TransportPeer> {
         match self.peers.read().await.get(id) {
             Some(peer) => Ok(peer.clone()),
-            None => Err(Error::generic(format!("Peer with ID {id} not found"))),
+            None => Err(Error::generic(format!("Session with ID {id} not found"))),
         }
     }
 

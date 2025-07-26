@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::{sse_docs, GatewayContext};
 use crate::{Error, MCPServer, ResourceManager};
 use aide::axum::routing::{get_with, post_with};
@@ -15,20 +17,27 @@ use tokio_util::bytes;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct MessageQuery {
-    /// The ID of the session to which the message should be sent.
-    session_id: String,
+pub struct SseQuery {
+    /// The maximum time to wait for the server to be ready before sending the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    timeout: Option<u64>,
 }
 
 /// Handler for GET /{name}/sse
 #[tracing::instrument(name = "GET /{name}/sse", skip_all)]
-async fn sse(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> impl IntoApiResponse {
+async fn sse(
+    Path(name): Path<String>,
+    Query(query): Query<SseQuery>,
+    State(ctx): State<GatewayContext>,
+) -> impl IntoApiResponse {
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
+        let timeout = query.timeout.map(Duration::from_secs);
         server.request(&client).await?;
         server.notify_request(&client).await?;
         server.notify_connect(&client).await?;
+        server.wait_until_ready(&client, timeout).await?;
         let mut transport = ctx.get_transport(&server)?;
         let peer = transport.subscribe().await?;
         let endpoint = format!("/{name}/message");
@@ -43,6 +52,16 @@ async fn sse(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> imp
     .into_response()
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageQuery {
+    /// The ID of the session to which the message should be sent.
+    session_id: String,
+    /// The maximum time to wait for the server to be ready before sending the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    timeout: Option<u64>,
+}
+
 /// Handler for POST /{name}/message
 #[tracing::instrument(name = "POST /{name}/message", skip_all)]
 async fn message(
@@ -54,8 +73,10 @@ async fn message(
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
+        let timeout = query.timeout.map(Duration::from_secs);
         server.request(&client).await?;
         server.notify_request(&client).await?;
+        server.wait_until_ready(&client, timeout).await?;
         let transport = ctx.get_transport(&server)?;
         let peer = transport.get_peer(query.session_id).await?;
         let result = peer.send_request(request).await?;
@@ -76,8 +97,8 @@ async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> im
         // --- Get the log stream for the server.
         let stream = server.get_logs(&client).await?;
         let stream = stream.lines();
-        let stream = futures::StreamExt::map(stream, |line| match line {
-            Ok(line) => Ok(bytes::Bytes::from(format!("{line}\n"))),
+        let stream = futures::StreamExt::map(stream, |bytes| match bytes {
+            Ok(bytes) => Ok(bytes::Bytes::from(bytes)),
             Err(e) => Err(std::io::Error::other(e)),
         });
 
