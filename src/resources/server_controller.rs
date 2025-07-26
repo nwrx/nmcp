@@ -1,7 +1,7 @@
 use super::{
     IntoResource, MCPPool, MCPServer, MCPServerCondition as Condition, MCPServerPhase as Phase,
-    MCPServerPodScheduledReason as PodScheduledReason, MCPServerRequestedReason as RequestReqson,
-    MCPServerStaleReason as StaleReason, ResourceManager,
+    MCPServerPodScheduledState as PodScheduledReason, MCPServerRequestedState as RequestReqson,
+    MCPServerStaleState as StaleReason, ResourceManager,
 };
 use crate::{Error, ErrorInner, Result, MCP_SERVER_CONTAINER_NAME};
 use axum::http::StatusCode;
@@ -58,11 +58,22 @@ impl MCPServer {
     pub async fn push_condition(&self, client: &Client, condition: Condition) -> Result<()> {
         let mut status = self.get_status(client).await?;
         let mut condition: meta::v1::Condition = condition.into();
-
-        // --- Check if the condition already exists, if so, replace it,
-        // --- update the observed generation and push the new condition.
-        status.conditions.retain(|c| c.type_ != condition.type_);
         condition.observed_generation = self.metadata.generation;
+
+        // --- Check if the condition already exists and is identical
+        let mut conditions = status.conditions.iter();
+        if let Some(existing) = conditions.find(|c| c.type_ == condition.type_) {
+            if existing.status == condition.status
+                && existing.reason == condition.reason
+                && existing.message == condition.message
+                && existing.observed_generation == condition.observed_generation
+            {
+                return Ok(()); // No change needed
+            }
+        }
+
+        // --- Remove existing condition of the same type and add the new one
+        status.conditions.retain(|c| c.type_ != condition.type_);
         status.conditions.push(condition);
 
         // --- Apply the updated status to the resource.

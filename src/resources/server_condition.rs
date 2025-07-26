@@ -5,20 +5,20 @@ use std::fmt::{Display, Formatter};
 
 /// The reason why a server is stale
 #[derive(Debug, Copy, Clone)]
-pub enum MCPServerStaleReason {
+pub enum MCPServerStaleState {
     /// The server is stale because it has been requested to stop
     ManualShutdown,
     /// The server is stale because it has been idle for too long
     IdleTimeout,
     /// The server is stale because it has been running for too long
-    MaxUptimeExceeded,
+    UptimeExceeded,
     /// The server is stale because the configuration has changed
     Outdated,
     /// The server is not stale and is still running
     NotStale,
 }
 
-impl Display for MCPServerStaleReason {
+impl Display for MCPServerStaleState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
@@ -26,12 +26,16 @@ impl Display for MCPServerStaleReason {
 
 // The reason why a server is requested
 #[derive(Debug, Copy, Clone)]
-pub enum MCPServerRequestedReason {
+pub enum MCPServerRequestedState {
     /// A connection was made to the server
     Connection,
+    /// The server was manually requested to start
+    ManualStart,
+    /// The server was manually requested to stop
+    ManualStop,
 }
 
-impl Display for MCPServerRequestedReason {
+impl Display for MCPServerRequestedState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
@@ -39,7 +43,7 @@ impl Display for MCPServerRequestedReason {
 
 /// The various states of a `PodScheduled` reasons.
 #[derive(Debug, Clone)]
-pub enum MCPServerPodScheduledReason {
+pub enum MCPServerPodScheduledState {
     /// The pod scheduling failed
     Failed(Error),
     /// The pod succeeded, meaning it was terminated successfully.
@@ -50,7 +54,7 @@ pub enum MCPServerPodScheduledReason {
     Terminating,
 }
 
-impl Display for MCPServerPodScheduledReason {
+impl Display for MCPServerPodScheduledState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Failed(_) => write!(f, "Failed"),
@@ -66,12 +70,12 @@ impl Display for MCPServerPodScheduledReason {
 #[derive(Debug, Clone)]
 pub enum MCPServerCondition {
     /// The server has been requested to start.
-    Requested(MCPServerRequestedReason),
+    Requested(MCPServerRequestedState),
     /// The server is stale and needs to be stopped.
-    Stale(MCPServerStaleReason),
+    Stale(MCPServerStaleState),
 
     /// Pod resource has been created
-    PodScheduled(MCPServerPodScheduledReason),
+    PodScheduled(MCPServerPodScheduledState),
     /// Pod containers are up & ready
     PodReady(Option<Error>),
 
@@ -79,9 +83,6 @@ pub enum MCPServerCondition {
     ServiceCreated(Option<Error>),
     /// Service endpoints are ready
     ServiceReady(Option<Error>),
-
-    /// Reconciliation is in‐flight (starting or stopping)
-    Progressing(Option<Error>),
 }
 
 impl Display for MCPServerCondition {
@@ -93,7 +94,6 @@ impl Display for MCPServerCondition {
             Self::PodReady(_) => write!(f, "PodReady"),
             Self::ServiceCreated(_) => write!(f, "ServiceCreated"),
             Self::ServiceReady(_) => write!(f, "ServiceReady"),
-            Self::Progressing(_) => write!(f, "Progressing"),
         }
     }
 }
@@ -106,11 +106,16 @@ impl From<MCPServerCondition> for v1::Condition {
                 reason: reason.to_string(),
                 observed_generation: None,
                 last_transition_time: v1::Time(Utc::now()),
-                status: "True".to_string(),
+                status: match reason {
+                    MCPServerRequestedState::Connection => "True",
+                    MCPServerRequestedState::ManualStart => "True",
+                    MCPServerRequestedState::ManualStop => "False",
+                }
+                .to_owned(),
                 message: match reason {
-                    MCPServerRequestedReason::Connection => {
-                        "Server has been requested to start due to a connection".to_string()
-                    }
+                    MCPServerRequestedState::Connection => "Due to a connection".to_string(),
+                    MCPServerRequestedState::ManualStart => "Due to manual start".to_string(),
+                    MCPServerRequestedState::ManualStop => "Due to manual stop".to_string(),
                 },
             },
             MCPServerCondition::Stale(reason) => Self {
@@ -119,27 +124,19 @@ impl From<MCPServerCondition> for v1::Condition {
                 observed_generation: None,
                 last_transition_time: v1::Time(Utc::now()),
                 status: match reason {
-                    MCPServerStaleReason::ManualShutdown
-                    | MCPServerStaleReason::IdleTimeout
-                    | MCPServerStaleReason::MaxUptimeExceeded
-                    | MCPServerStaleReason::Outdated => "True",
-                    MCPServerStaleReason::NotStale => "False",
+                    MCPServerStaleState::ManualShutdown => "True",
+                    MCPServerStaleState::IdleTimeout => "True",
+                    MCPServerStaleState::UptimeExceeded => "True",
+                    MCPServerStaleState::Outdated => "True",
+                    MCPServerStaleState::NotStale => "False",
                 }
                 .to_owned(),
                 message: match reason {
-                    MCPServerStaleReason::ManualShutdown => {
-                        "Server is stale due to manual shutdown".to_string()
-                    }
-                    MCPServerStaleReason::IdleTimeout => {
-                        "Server is stale due to idle timeout".to_string()
-                    }
-                    MCPServerStaleReason::MaxUptimeExceeded => {
-                        "Server is stale due to max uptime exceeded".to_string()
-                    }
-                    MCPServerStaleReason::Outdated => {
-                        "Server is stale due to outdated configuration".to_string()
-                    }
-                    MCPServerStaleReason::NotStale => "Server is not stale".to_string(),
+                    MCPServerStaleState::ManualShutdown => "Due to manual shutdown".to_string(),
+                    MCPServerStaleState::IdleTimeout => "Due to idle timeout".to_string(),
+                    MCPServerStaleState::UptimeExceeded => "Due to uptime exceeded".to_string(),
+                    MCPServerStaleState::Outdated => "Due to outdated configuration".to_string(),
+                    MCPServerStaleState::NotStale => "Server is not stale".to_string(),
                 },
             },
             MCPServerCondition::PodScheduled(state) => Self {
@@ -148,21 +145,17 @@ impl From<MCPServerCondition> for v1::Condition {
                 observed_generation: None,
                 last_transition_time: v1::Time(Utc::now()),
                 status: match state {
-                    MCPServerPodScheduledReason::Failed(_) => "False",
-                    MCPServerPodScheduledReason::Succeeded => "True",
-                    MCPServerPodScheduledReason::Scheduled => "True",
-                    MCPServerPodScheduledReason::Terminating => "False",
+                    MCPServerPodScheduledState::Failed(_) => "False",
+                    MCPServerPodScheduledState::Succeeded => "False",
+                    MCPServerPodScheduledState::Terminating => "False",
+                    MCPServerPodScheduledState::Scheduled => "True",
                 }
                 .to_owned(),
                 message: match state {
-                    MCPServerPodScheduledReason::Failed(error) => error.to_string(),
-                    MCPServerPodScheduledReason::Succeeded => {
-                        "Pod has been terminated successfully".to_string()
-                    }
-                    MCPServerPodScheduledReason::Scheduled => {
-                        "Pod has been scheduled successfully".to_string()
-                    }
-                    MCPServerPodScheduledReason::Terminating => "Pod is terminating".to_string(),
+                    MCPServerPodScheduledState::Failed(error) => error.to_string(),
+                    MCPServerPodScheduledState::Succeeded => "Pod has been terminated".to_string(),
+                    MCPServerPodScheduledState::Terminating => "Pod is terminating".to_string(),
+                    MCPServerPodScheduledState::Scheduled => "Pod has been scheduled".to_string(),
                 },
             },
             MCPServerCondition::PodReady(error) => Self {
@@ -197,17 +190,6 @@ impl From<MCPServerCondition> for v1::Condition {
                     .clone()
                     .map(|e| e.to_string())
                     .unwrap_or_else(|| "Service is ready".to_string()),
-            },
-            MCPServerCondition::Progressing(error) => Self {
-                type_: condition.to_string(),
-                reason: condition.to_string(),
-                observed_generation: None,
-                last_transition_time: v1::Time(Utc::now()),
-                status: if error.is_some() { "False" } else { "True" }.to_string(),
-                message: error
-                    .clone()
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "Reconciliation is in progress".to_string()),
             },
         }
     }
