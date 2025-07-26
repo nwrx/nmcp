@@ -111,7 +111,7 @@ where
             match key.as_str() {
                 "error.name" => write!(
                     writer,
-                    "\n\x1b[90m│\x1b[0m  \x1b[31m  ⚠ NAME\x1b[0m:    {value}"
+                    "\x1b[90m│\x1b[0m  \x1b[31m  ⚠ NAME\x1b[0m:    {value}"
                 )?,
                 "error.code" => write!(
                     writer,
@@ -122,7 +122,7 @@ where
                     "\n\x1b[90m│\x1b[0m  \x1b[31m  ✘ MESSAGE\x1b[0m: {value}"
                 )?,
                 "error.backtrace" => {
-                    write!(writer, "\n\n  \x1b[33m  ⧉ BACKTRACE\x1b[0m")?;
+                    write!(writer, "\n\x1b[90m│\x1b[0m  \x1b[33m  ⧉ BACKTRACE\x1b[0m")?;
                     let backtrace: Backtrace = serde_json::from_str(value).unwrap_or_default();
                     let mut output = String::new();
                     for frame in backtrace.frames {
@@ -132,7 +132,8 @@ where
                             }
                         }
                         output.push_str(&format!(
-                            "\n{}:{}:{}",
+                            "\n{} -> {}:{}:{}",
+                            frame.name.as_deref().unwrap_or("unknown"),
                             frame
                                 .filename
                                 .as_deref()
