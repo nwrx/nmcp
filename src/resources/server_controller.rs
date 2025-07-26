@@ -1,6 +1,6 @@
 use super::{
     IntoResource, MCPPool, MCPServer, MCPServerCondition as Condition, MCPServerPhase as Phase,
-    MCPServerPodScheduledState as PodScheduledReason, MCPServerRequestedState as RequestReqson,
+    MCPServerPodScheduledState as PodScheduledReason, MCPServerRequestedState as RequestReason,
     MCPServerStaleState as StaleReason, ResourceManager,
 };
 use crate::{Error, ErrorInner, Result, MCP_SERVER_CONTAINER_NAME};
@@ -149,8 +149,10 @@ impl MCPServer {
     /// Clear the connected clients count.
     pub async fn clear_connected_clients(&self, client: &Client) -> Result<()> {
         let mut status = self.get_status(client).await?;
-        status.current_connections = 0;
-        let _ = self.patch_status(client, status).await?;
+        if status.current_connections > 0 {
+            status.current_connections = 0;
+            let _ = self.patch_status(client, status).await?;
+        }
         Ok(())
     }
 
@@ -286,10 +288,8 @@ impl MCPServer {
     pub async fn reconcile_status_with_pod(&self, client: &Client) -> Result<()> {
         match self.get_pod_status(client).await? {
             MCPServerPodStatus::Running => {
-                let reason = PodScheduledReason::Scheduled;
+                let reason = PodScheduledReason::Running;
                 let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                let condition = Condition::PodReady(None);
                 self.push_condition(client, condition).await?;
                 self.set_phase(client, Phase::Ready).await?;
             }
@@ -297,6 +297,16 @@ impl MCPServer {
                 Phase::Stopping => {
                     let reason = PodScheduledReason::Terminating;
                     let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Idle).await?;
+                    self.clear_connected_clients(client).await?;
+                }
+                Phase::Idle => {
+                    let reason = PodScheduledReason::Succeeded;
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    let reason = RequestReason::Unused;
+                    let condition = Condition::Requested(reason);
                     self.push_condition(client, condition).await?;
                     self.set_phase(client, Phase::Idle).await?;
                     self.clear_connected_clients(client).await?;
@@ -453,15 +463,16 @@ impl MCPServer {
 
     /// Requests the server to start.
     pub async fn request(&self, client: &Client) -> Result<()> {
+        self.notify_request(client).await?;
         match self.get_status(client).await?.phase {
             Phase::Ready | Phase::Requested | Phase::Starting => Ok(()),
             Phase::Idle | Phase::Degraded | Phase::Stopping => {
-                let reason = RequestReqson::Connection;
+                let reason = RequestReason::Connection;
                 let condition = Condition::Requested(reason);
                 self.clear_conditions(client).await?;
                 self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Requested).await?;
                 self.notify_requested(client).await?;
+                self.set_phase(client, Phase::Requested).await?;
                 Ok(())
             }
         }
@@ -500,17 +511,13 @@ impl MCPServer {
 
     /// Return a log stream for the server pod.
     pub async fn get_logs(&self, client: &Client) -> Result<impl AsyncBufRead> {
-        let status = self.get_pod_status(client).await?;
-        if status == MCPServerPodStatus::NotFound {
-            return Err(Error::generic("Server is not running".to_string()));
-        }
         Api::<v1::Pod>::namespaced(client.clone(), client.default_namespace())
             .log_stream(
                 &<Self as IntoResource<v1::Pod>>::resource_name(self),
                 &LogParams {
                     container: Some(MCP_SERVER_CONTAINER_NAME.to_string()),
                     follow: true,
-                    pretty: false,
+                    pretty: true,
                     previous: false,
                     timestamps: true,
                     ..Default::default()
