@@ -2,8 +2,8 @@ use crate::{Error, MCPServer, MCPServerTransport, Result};
 use kube::Client;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-
 mod transport_peer;
 mod transport_stdio;
 
@@ -23,7 +23,11 @@ impl Debug for TransportInner {
 }
 
 #[derive(Debug, Clone)]
-pub struct Transport(Arc<RwLock<TransportInner>>);
+pub struct Transport {
+    inner: Arc<RwLock<TransportInner>>,
+    pub created_at: Instant,
+    pub last_accessed: Arc<RwLock<Instant>>,
+}
 
 impl Transport {
     pub fn new(client: &Client, server: &MCPServer) -> Result<Self> {
@@ -34,7 +38,11 @@ impl Transport {
                 let transport = TransportAttachedProcess::new(client, server);
                 let transport = TransportInner::AttachedProcess(transport);
                 let transport = Arc::new(RwLock::new(transport));
-                let transport = Self(transport);
+                let transport = Self {
+                    inner: transport,
+                    created_at: Instant::now(),
+                    last_accessed: Arc::new(RwLock::new(Instant::now())),
+                };
                 Ok(transport)
             }
 
@@ -48,15 +56,43 @@ impl Transport {
         }
     }
 
-    pub async fn subscribe(&self) -> Result<TransportPeer> {
-        match &mut *self.0.write().await {
+    /// Record the last access time for the transport. This allows us to track when the transport was last used,
+    /// and clean up idle transports if necessary based on the configured idle timeout.
+    pub async fn touch(&self) {
+        let mut last_accessed = self.last_accessed.write().await;
+        *last_accessed = Instant::now();
+    }
+
+    /// Get the age of the transport since it was created. This is useful for monitoring how long the transport
+    /// has been active and may help in determining if it should be cleaned up or not.
+    pub fn age(&self) -> Duration {
+        Instant::now().duration_since(self.created_at)
+    }
+
+    /// Get the idle time of the transport since it was last accessed. This is useful for determining if the transport
+    /// has been idle for too long and may need to be cleaned up.
+    pub async fn idle_time(&self) -> Duration {
+        let last_accessed = self.last_accessed.read().await;
+        Instant::now().duration_since(*last_accessed)
+    }
+
+    pub async fn subscribe(&mut self) -> Result<TransportPeer> {
+        self.touch().await;
+        match &mut *self.inner.write().await {
             TransportInner::AttachedProcess(transport) => transport.subscribe().await,
         }
     }
 
     pub async fn get_peer(&self, id: String) -> Result<TransportPeer> {
-        match &*self.0.read().await {
+        self.touch().await;
+        match &*self.inner.read().await {
             TransportInner::AttachedProcess(transport) => transport.get_peer(&id).await,
+        }
+    }
+
+    pub async fn close(&mut self) -> Result<()> {
+        match &mut *self.inner.write().await {
+            TransportInner::AttachedProcess(transport) => transport.close().await,
         }
     }
 }
