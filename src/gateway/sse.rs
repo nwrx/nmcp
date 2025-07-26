@@ -29,7 +29,7 @@ async fn sse(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> imp
         server.request(&client).await?;
         server.notify_request(&client).await?;
         server.notify_connect(&client).await?;
-        let mut transport = ctx.get_transport(&server).await?;
+        let mut transport = ctx.get_transport(&server)?;
         let peer = transport.subscribe().await?;
         let endpoint = format!("/{name}/message");
 
@@ -56,7 +56,7 @@ async fn message(
         let server = MCPServer::get_by_name(&client, &name).await?;
         server.request(&client).await?;
         server.notify_request(&client).await?;
-        let transport = ctx.get_transport(&server).await?;
+        let transport = ctx.get_transport(&server)?;
         let peer = transport.get_peer(query.session_id).await?;
         let result = peer.send_request(request).await?;
         Ok::<_, Error>(Json(result))

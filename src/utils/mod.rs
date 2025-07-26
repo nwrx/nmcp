@@ -3,8 +3,6 @@ mod error;
 mod get_kube_client;
 mod serialize;
 mod system_status;
-mod task;
-mod task_map;
 mod tracing;
 mod transport;
 
@@ -13,7 +11,5 @@ pub use error::*;
 pub use get_kube_client::*;
 pub use serialize::*;
 pub use system_status::*;
-pub use task::*;
-pub use task_map::*;
 pub use tracing::*;
 pub use transport::*;
