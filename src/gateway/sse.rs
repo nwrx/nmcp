@@ -1,7 +1,8 @@
-use std::time::Duration;
-
 use super::{sse_docs, GatewayContext};
-use crate::{Error, MCPServer, ResourceManager};
+use crate::{
+    Error, MCPServer, MCPServerCondition as Condition, MCPServerRequestedState as RequestState,
+    ResourceManager,
+};
 use aide::axum::routing::{get_with, post_with};
 use aide::axum::{ApiRouter, IntoApiResponse};
 use axum::body::Body;
@@ -13,6 +14,7 @@ use futures::AsyncBufReadExt;
 use rmcp::model::ClientJsonRpcMessage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio_util::bytes;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -34,9 +36,16 @@ async fn sse(
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
         let timeout = query.timeout.map(Duration::from_secs);
+        let reason = RequestState::Connection;
+        let condition = Condition::Requested(reason);
+
+        // --- Update the status so it can be picked-up by the operator.
         server.request(&client).await?;
         server.notify_connect(&client).await?;
+        server.push_condition(&client, condition).await?;
         server.wait_until_ready(&client, timeout).await?;
+
+        // --- Get the transport for the server and create a peer.
         let mut transport = ctx.get_transport(&server)?;
         let peer = transport.subscribe().await?;
         let endpoint = format!("/{name}/message");
@@ -73,8 +82,12 @@ async fn message(
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
         let timeout = query.timeout.map(Duration::from_secs);
+
+        // --- Request the server and wait until it's ready.
         server.request(&client).await?;
         server.wait_until_ready(&client, timeout).await?;
+
+        // --- Get the transport for the server and send the request.
         let transport = ctx.get_transport(&server)?;
         let peer = transport.get_peer(query.session_id).await?;
         let result = peer.send_request(request).await?;
@@ -82,33 +95,6 @@ async fn message(
     }
     .await
     .map_err(|e| e.trace())
-    .into_response()
-}
-
-#[derive(Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestQuery {
-    /// The maximum time to wait for the server to be ready.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    timeout: Option<u64>,
-}
-
-/// Handler for POST /{name}/request
-#[tracing::instrument(name = "POST /{name}/request", skip_all)]
-async fn request(
-    Path(name): Path<String>,
-    Query(query): Query<RequestQuery>,
-    State(ctx): State<GatewayContext>,
-) -> impl IntoApiResponse {
-    async {
-        let client = ctx.get_client().await;
-        let server = MCPServer::get_by_name(&client, &name).await?;
-        let timeout = query.timeout.map(Duration::from_secs);
-        server.request(&client).await?;
-        server.wait_until_ready(&client, timeout).await?;
-        Ok::<(), Error>(())
-    }
-    .await
     .into_response()
 }
 
@@ -144,6 +130,27 @@ async fn logs(Path(name): Path<String>, State(ctx): State<GatewayContext>) -> im
     .into_response()
 }
 
+/// Handler for POST /{name}/request
+#[tracing::instrument(name = "POST /{name}/request", skip_all)]
+async fn request(
+    Path(name): Path<String>,
+    State(ctx): State<GatewayContext>,
+) -> impl IntoApiResponse {
+    async {
+        let client = ctx.get_client().await;
+        let server = MCPServer::get_by_name(&client, &name).await?;
+        let reason = RequestState::ManualStart;
+        let condition = Condition::Requested(reason);
+
+        // --- Request the server and update its status.
+        server.request(&client).await?;
+        server.push_condition(&client, condition).await?;
+        Ok::<(), Error>(())
+    }
+    .await
+    .into_response()
+}
+
 /// Handler for `POST /{name}/shutdown`
 #[tracing::instrument(name = "POST /{name}/shutdown", skip_all)]
 async fn shutdown(
@@ -153,7 +160,12 @@ async fn shutdown(
     async {
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
-        server.down(&client).await?;
+        let reason = RequestState::ManualStop;
+        let condition = Condition::Requested(reason);
+
+        // --- Request the server to shutdown and update its status.
+        server.shutdown(&client).await?;
+        server.push_condition(&client, condition).await?;
         Ok::<(), Error>(())
     }
     .await
@@ -167,5 +179,6 @@ pub fn router(ctx: GatewayContext) -> ApiRouter<()> {
         .api_route("/logs", get_with(logs, sse_docs::logs_docs))
         .api_route("/message", post_with(message, sse_docs::message_docs))
         .api_route("/request", post_with(request, sse_docs::request_docs))
+        .api_route("/shutdown", post_with(shutdown, sse_docs::shutdown_docs))
         .with_state(ctx)
 }

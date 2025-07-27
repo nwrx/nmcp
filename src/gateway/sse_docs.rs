@@ -36,3 +36,12 @@ pub fn request_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .description("Requests the server and waits until it's ready. This is useful for ensuring the server is available before performing other operations. Does not return or send any data.")
         .response::<200, ()>()
 }
+
+/// Documentation for the POST /{name}/shutdown endpoint
+pub fn shutdown_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("postServerShutdown")
+        .tag("Server")
+        .summary("Shutdown Server")
+        .description("Shuts down the server. This is useful for stopping the server gracefully. Does not return or send any data.")
+        .response::<200, ()>()
+}
