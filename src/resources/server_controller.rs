@@ -283,6 +283,7 @@ impl MCPServer {
             let reason = RequestedState::IdleTimeout;
             let condition = Condition::Requested(reason);
             self.push_condition(client, condition).await?;
+            self.set_phase(client, Phase::Stopping).await?;
         }
 
         Ok(is_stale)
