@@ -82,9 +82,12 @@ async fn message(
         let client = ctx.get_client().await;
         let server = MCPServer::get_by_name(&client, &name).await?;
         let timeout = query.timeout.map(Duration::from_secs);
+        let reason = RequestState::Connection;
+        let condition = Condition::Requested(reason);
 
         // --- Request the server and wait until it's ready.
         server.request(&client).await?;
+        server.push_condition(&client, condition).await?;
         server.wait_until_ready(&client, timeout).await?;
 
         // --- Get the transport for the server and send the request.
