@@ -3,27 +3,6 @@ use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1;
 use std::fmt::{Display, Formatter};
 
-/// The reason why a server is stale
-#[derive(Debug, Copy, Clone)]
-pub enum MCPServerStaleState {
-    /// The server is stale because it has been requested to stop
-    ManualShutdown,
-    /// The server is stale because it has been idle for too long
-    IdleTimeout,
-    /// The server is stale because it has been running for too long
-    UptimeExceeded,
-    /// The server is stale because the configuration has changed
-    Outdated,
-    /// The server is not stale and is still running
-    NotStale,
-}
-
-impl Display for MCPServerStaleState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
 // The reason why a server is requested
 #[derive(Debug, Copy, Clone)]
 pub enum MCPServerRequestedState {
@@ -33,8 +12,8 @@ pub enum MCPServerRequestedState {
     ManualStart,
     /// The server was manually requested to stop
     ManualStop,
-    /// The server is not requested to do anything
-    Unused,
+    /// The idle timer expired, meaning the server was idle for too long
+    IdleTimeout,
 }
 
 impl Display for MCPServerRequestedState {
@@ -76,8 +55,6 @@ impl Display for MCPServerPodScheduledState {
 pub enum MCPServerCondition {
     /// The server has been requested to start.
     Requested(MCPServerRequestedState),
-    /// The server is stale and needs to be stopped.
-    Stale(MCPServerStaleState),
     /// Pod resource has been created
     PodScheduled(MCPServerPodScheduledState),
     /// Service resource has been created
@@ -88,7 +65,6 @@ impl Display for MCPServerCondition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Requested(_) => write!(f, "Requested"),
-            Self::Stale(_) => write!(f, "Stale"),
             Self::PodScheduled(_) => write!(f, "PodScheduled"),
             Self::ServiceCreated(_) => write!(f, "ServiceCreated"),
         }
@@ -107,35 +83,14 @@ impl From<MCPServerCondition> for v1::Condition {
                     MCPServerRequestedState::Connection => "True",
                     MCPServerRequestedState::ManualStart => "True",
                     MCPServerRequestedState::ManualStop => "False",
-                    MCPServerRequestedState::Unused => "False",
+                    MCPServerRequestedState::IdleTimeout => "False",
                 }
                 .to_owned(),
                 message: match reason {
                     MCPServerRequestedState::Connection => "Due to a connection".to_string(),
                     MCPServerRequestedState::ManualStart => "Due to manual start".to_string(),
                     MCPServerRequestedState::ManualStop => "Due to manual stop".to_string(),
-                    MCPServerRequestedState::Unused => "Not requested to do anything".to_string(),
-                },
-            },
-            MCPServerCondition::Stale(state) => Self {
-                type_: condition.to_string(),
-                reason: state.to_string(),
-                observed_generation: None,
-                last_transition_time: v1::Time(Utc::now()),
-                status: match state {
-                    MCPServerStaleState::ManualShutdown => "True",
-                    MCPServerStaleState::IdleTimeout => "True",
-                    MCPServerStaleState::UptimeExceeded => "True",
-                    MCPServerStaleState::Outdated => "True",
-                    MCPServerStaleState::NotStale => "False",
-                }
-                .to_owned(),
-                message: match state {
-                    MCPServerStaleState::ManualShutdown => "Due to manual shutdown".to_string(),
-                    MCPServerStaleState::IdleTimeout => "Due to idle timeout".to_string(),
-                    MCPServerStaleState::UptimeExceeded => "Due to uptime exceeded".to_string(),
-                    MCPServerStaleState::Outdated => "Due to outdated configuration".to_string(),
-                    MCPServerStaleState::NotStale => "Server is not stale".to_string(),
+                    MCPServerRequestedState::IdleTimeout => "Due to idle timeout".to_string(),
                 },
             },
             MCPServerCondition::PodScheduled(state) => Self {

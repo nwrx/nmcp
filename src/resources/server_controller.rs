@@ -1,7 +1,7 @@
 use super::{
     IntoResource, MCPPool, MCPServer, MCPServerCondition as Condition, MCPServerPhase as Phase,
-    MCPServerPodScheduledState as PodScheduledReason, MCPServerRequestedState as RequestReason,
-    MCPServerStaleState as StaleReason, ResourceManager,
+    MCPServerPodScheduledState as PodScheduledState, MCPServerRequestedState as RequestedState,
+    ResourceManager,
 };
 use crate::{Error, ErrorInner, Result, MCP_SERVER_CONTAINER_NAME};
 use axum::http::StatusCode;
@@ -15,7 +15,7 @@ use kube::{Api, Client};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MCPServerPodStatus {
+pub enum PodStatus {
     Running,
     Pending,
     Succeeded,
@@ -28,7 +28,7 @@ pub enum MCPServerPodStatus {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MCPServerContainerStatus {
+pub enum ContainerStatus {
     Waiting(v1::ContainerStateWaiting),
     Running(v1::ContainerStateRunning),
     Terminated(v1::ContainerStateTerminated),
@@ -161,27 +161,26 @@ impl MCPServer {
     /***********************************************************************/
 
     /// Get the pod status for the given `MCPServer`.
-    pub async fn get_pod_status(&self, client: &Client) -> Result<MCPServerPodStatus> {
-        let pod = <Self as IntoResource<v1::Pod>>::get_resource(self, client).await;
-        match pod {
+    pub async fn get_pod_status(&self, client: &Client) -> Result<PodStatus> {
+        match <Self as IntoResource<v1::Pod>>::get_resource(self, client).await {
             Ok(pod) => {
                 let status = pod.status.unwrap_or_default();
                 let phase = status.phase.unwrap_or_default();
                 match phase.as_str() {
-                    "Running" => Ok(MCPServerPodStatus::Running),
-                    "Pending" => Ok(MCPServerPodStatus::Pending),
-                    "Succeeded" => Ok(MCPServerPodStatus::Succeeded),
+                    "Running" => Ok(PodStatus::Running),
+                    "Pending" => Ok(PodStatus::Pending),
+                    "Succeeded" => Ok(PodStatus::Succeeded),
                     "Failed" => {
                         let message = status.message.clone();
                         let reason = status.reason.clone();
-                        Ok(MCPServerPodStatus::Failed { message, reason })
+                        Ok(PodStatus::Failed { message, reason })
                     }
-                    _ => Ok(MCPServerPodStatus::Unknown),
+                    _ => Ok(PodStatus::Unknown),
                 }
             }
             Err(error) => match error.source() {
                 ErrorInner::KubeError(kube::Error::Api(error)) if error.code == 404 => {
-                    Ok(MCPServerPodStatus::NotFound)
+                    Ok(PodStatus::NotFound)
                 }
                 _ => Err(error),
             },
@@ -189,12 +188,8 @@ impl MCPServer {
     }
 
     /// Get the container status for the given `MCPServer`.
-    pub async fn get_pod_container_status(
-        &self,
-        client: &Client,
-    ) -> Result<MCPServerContainerStatus> {
-        let pod = <Self as IntoResource<v1::Pod>>::get_resource(self, client).await;
-        match pod {
+    pub async fn get_pod_container_status(&self, client: &Client) -> Result<ContainerStatus> {
+        match <Self as IntoResource<v1::Pod>>::get_resource(self, client).await {
             Ok(pod) => {
                 if let Some(status) = pod.status {
                     if let Some(container_statuses) = status.container_statuses {
@@ -202,30 +197,28 @@ impl MCPServer {
                             if container.name == MCP_SERVER_CONTAINER_NAME {
                                 if let Some(state) = container.state {
                                     if let Some(waiting) = state.waiting {
-                                        return Ok(MCPServerContainerStatus::Waiting(waiting));
+                                        return Ok(ContainerStatus::Waiting(waiting));
                                     }
                                     if let Some(running) = state.running {
-                                        return Ok(MCPServerContainerStatus::Running(running));
+                                        return Ok(ContainerStatus::Running(running));
                                     }
                                     if let Some(terminated) = state.terminated {
-                                        return Ok(MCPServerContainerStatus::Terminated(
-                                            terminated,
-                                        ));
+                                        return Ok(ContainerStatus::Terminated(terminated));
                                     }
                                 }
                             }
                         }
-                        Ok(MCPServerContainerStatus::ContainerNotFound)
+                        Ok(ContainerStatus::ContainerNotFound)
                     } else {
-                        Ok(MCPServerContainerStatus::ContainerNotFound)
+                        Ok(ContainerStatus::ContainerNotFound)
                     }
                 } else {
-                    Ok(MCPServerContainerStatus::PodNotFound)
+                    Ok(ContainerStatus::PodNotFound)
                 }
             }
             Err(error) => match error.source() {
                 ErrorInner::KubeError(kube::Error::Api(error)) if error.code == 404 => {
-                    Ok(MCPServerContainerStatus::PodNotFound)
+                    Ok(ContainerStatus::PodNotFound)
                 }
                 _ => Err(error),
             },
@@ -234,113 +227,18 @@ impl MCPServer {
 
     /// Ensure that the `Pod` for the `MCPServer` is scheduled.
     pub async fn ensure_pod_is_scheduled(&self, client: &Client) -> Result<()> {
-        match self.get_pod_status(client).await? {
-            MCPServerPodStatus::Running | MCPServerPodStatus::Pending => {
-                // Pod is Running or Pending, we can wait for it to be scheduled.
-            }
-            MCPServerPodStatus::NotFound => {
-                tracing::info!("Pod not found, creating it for server");
-                let state = PodScheduledReason::Scheduled;
-                let condition = Condition::PodScheduled(state);
-                self.push_condition(client, condition).await?;
-                self.notify_started(client).await?;
-                let _ = <Self as IntoResource<v1::Pod>>::patch_resource(self, client).await?;
-            }
-            MCPServerPodStatus::Failed { message, .. } => {
-                let error = Error::generic(message.unwrap_or("Pod failed to start".to_string()))
-                    .with_name("E_POD_FAILED")
-                    .with_status(StatusCode::SERVICE_UNAVAILABLE);
-                return Err(error);
-            }
-            MCPServerPodStatus::Succeeded => {
-                let error = Error::generic("Pod succeeded unexpectedly")
-                    .with_name("E_POD_SUCCEEDED")
-                    .with_status(StatusCode::SERVICE_UNAVAILABLE);
-                return Err(error);
-            }
-            MCPServerPodStatus::Unknown => {
-                let error = Error::generic("Pod status is unknown")
-                    .with_name("E_POD_UNKNOWN")
-                    .with_status(StatusCode::SERVICE_UNAVAILABLE);
-                return Err(error);
-            }
+        if self.get_pod_status(client).await? == PodStatus::NotFound {
+            tracing::info!("Pod not found, creating it for server");
+            self.notify_started(client).await?;
+            let _ = <Self as IntoResource<v1::Pod>>::patch_resource(self, client).await?;
         }
         Ok(())
     }
 
     /// Ensure that the `Pod` for the `MCPServer` is terminated.
     pub async fn ensure_pod_is_terminated(&self, client: &Client) -> Result<()> {
-        match self.get_pod_status(client).await? {
-            MCPServerPodStatus::NotFound => {
-                // Pod is already terminated/not found
-            }
-            _ => {
-                let reason = PodScheduledReason::Terminating;
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                <Self as IntoResource<v1::Pod>>::delete_resource(self, client).await?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Update the `status` based on the current state of the associated `Pod`.
-    pub async fn reconcile_status_with_pod(&self, client: &Client) -> Result<()> {
-        match self.get_pod_status(client).await? {
-            MCPServerPodStatus::Running => {
-                let reason = PodScheduledReason::Running;
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Ready).await?;
-            }
-            MCPServerPodStatus::NotFound => match self.get_status(client).await?.phase {
-                Phase::Stopping => {
-                    let reason = PodScheduledReason::Terminating;
-                    let condition = Condition::PodScheduled(reason);
-                    self.push_condition(client, condition).await?;
-                    self.set_phase(client, Phase::Idle).await?;
-                    self.clear_connected_clients(client).await?;
-                }
-                Phase::Idle => {
-                    let reason = PodScheduledReason::Succeeded;
-                    let condition = Condition::PodScheduled(reason);
-                    self.push_condition(client, condition).await?;
-                    let reason = RequestReason::Unused;
-                    let condition = Condition::Requested(reason);
-                    self.push_condition(client, condition).await?;
-                    self.set_phase(client, Phase::Idle).await?;
-                    self.clear_connected_clients(client).await?;
-                }
-                _ => {
-                    // Wait for the pod to be created.
-                }
-            },
-            MCPServerPodStatus::Pending => {
-                let reason = PodScheduledReason::Scheduled;
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Starting).await?;
-            }
-            MCPServerPodStatus::Failed { message, .. } => {
-                let error = Error::generic(message.unwrap_or("Pod failed to start".to_string()));
-                let reason = PodScheduledReason::Failed(error);
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Degraded).await?;
-            }
-            MCPServerPodStatus::Succeeded => {
-                let reason = PodScheduledReason::Succeeded;
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Idle).await?;
-            }
-            MCPServerPodStatus::Unknown => {
-                let error = Error::generic("Pod status is unknown");
-                let reason = PodScheduledReason::Failed(error);
-                let condition = Condition::PodScheduled(reason);
-                self.push_condition(client, condition).await?;
-                self.set_phase(client, Phase::Degraded).await?;
-            }
+        if self.get_pod_status(client).await? != PodStatus::NotFound {
+            <Self as IntoResource<v1::Pod>>::delete_resource(self, client).await?;
         }
         Ok(())
     }
@@ -380,14 +278,12 @@ impl MCPServer {
         let elapsed_secs = elapsed.as_secs() as i64;
         let is_stale = elapsed_secs > idle_timeout as i64;
 
-        // --- Ensure we are tracking the `stale` condition in the server status.
-        let reason = if is_stale {
-            StaleReason::IdleTimeout
-        } else {
-            StaleReason::NotStale
-        };
-        let condition = Condition::Stale(reason);
-        self.push_condition(client, condition).await?;
+        // --- If stale, update the requested state condition.
+        if is_stale {
+            let reason = RequestedState::IdleTimeout;
+            let condition = Condition::Requested(reason);
+            self.push_condition(client, condition).await?;
+        }
 
         Ok(is_stale)
     }
@@ -411,20 +307,6 @@ impl MCPServer {
             Phase::Ready | Phase::Starting => self.is_server_stale(client).await?,
             Phase::Requested => self.is_server_stale(client).await?,
         })
-    }
-
-    /// Start or stop the server based on its current status and conditions.
-    pub async fn reconcile_server(&self, client: &Client) -> Result<()> {
-        if self.should_server_be_up(client).await? {
-            self.up(client).await?;
-        } else if self.should_server_be_down(client).await? {
-            self.down(client).await?;
-        }
-
-        // --- Reconcile the server status with the pod status.
-        self.reconcile_status_with_pod(client).await?;
-
-        Ok(())
     }
 
     /// Return a `Future` that will finish once the server is in the `Ready` phase.
@@ -456,6 +338,265 @@ impl MCPServer {
             }
         }
     }
+    /***********************************************************************/
+    /* Reconciliation                                                      */
+    /***********************************************************************/
+
+    /// Update the `status` based on the current state of the associated `Pod`.
+    pub async fn reconcile_status_with_pod(&self, client: &Client) -> Result<()> {
+        let current_status = self.get_status(client).await?;
+        let pod_status = self.get_pod_status(client).await?;
+
+        match current_status.phase {
+            Phase::Requested => {
+                match pod_status {
+                    PodStatus::NotFound => {
+                        // Pod hasn't been created yet, keep waiting
+                    }
+                    PodStatus::Pending => {
+                        let reason = PodScheduledState::Scheduled;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Starting).await?;
+                    }
+                    PodStatus::Running => {
+                        let reason = PodScheduledState::Running;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Ready).await?;
+                    }
+                    PodStatus::Failed { message, .. } => {
+                        let error =
+                            Error::generic(message.unwrap_or("Pod failed to start".to_string()));
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::Succeeded => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Idle).await?;
+                    }
+                    PodStatus::Unknown => {
+                        let error = Error::generic("Pod status is unknown");
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                }
+            }
+            Phase::Starting => {
+                match pod_status {
+                    PodStatus::Running => {
+                        let reason = PodScheduledState::Running;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Ready).await?;
+                    }
+                    PodStatus::Failed { message, .. } => {
+                        let error =
+                            Error::generic(message.unwrap_or("Pod failed to start".to_string()));
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::NotFound => {
+                        // Pod was deleted while starting, go back to requested
+                        self.set_phase(client, Phase::Requested).await?;
+                    }
+                    PodStatus::Succeeded => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Idle).await?;
+                    }
+                    PodStatus::Unknown => {
+                        let error = Error::generic("Pod status is unknown");
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::Pending => {
+                        // Still starting, no action needed
+                    }
+                }
+            }
+            Phase::Ready => {
+                match pod_status {
+                    PodStatus::Running => {
+                        // Everything is good, no action needed
+                    }
+                    PodStatus::Failed { message, .. } => {
+                        let error = Error::generic(
+                            message.unwrap_or("Pod failed while running".to_string()),
+                        );
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::NotFound => {
+                        // Pod was deleted while ready, transition to stopping
+                        self.set_phase(client, Phase::Stopping).await?;
+                    }
+                    PodStatus::Succeeded => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Idle).await?;
+                    }
+                    PodStatus::Unknown => {
+                        let error = Error::generic("Pod status is unknown");
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::Pending => {
+                        // Pod restarted, go back to starting
+                        self.set_phase(client, Phase::Starting).await?;
+                    }
+                }
+            }
+            Phase::Stopping => match pod_status {
+                PodStatus::NotFound => {
+                    let reason = PodScheduledState::Succeeded;
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Idle).await?;
+                    self.clear_connected_clients(client).await?;
+                }
+                PodStatus::Succeeded => {
+                    let reason = PodScheduledState::Succeeded;
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Idle).await?;
+                    self.clear_connected_clients(client).await?;
+                }
+                PodStatus::Running | PodStatus::Pending => {
+                    let reason = PodScheduledState::Terminating;
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                }
+                PodStatus::Failed { message, .. } => {
+                    let error = Error::generic(
+                        message.unwrap_or("Pod failed during termination".to_string()),
+                    );
+                    let reason = PodScheduledState::Failed(error);
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Degraded).await?;
+                }
+                PodStatus::Unknown => {
+                    let error = Error::generic("Pod status is unknown during termination");
+                    let reason = PodScheduledState::Failed(error);
+                    let condition = Condition::PodScheduled(reason);
+                    self.push_condition(client, condition).await?;
+                    self.set_phase(client, Phase::Degraded).await?;
+                }
+            },
+            Phase::Idle => {
+                match pod_status {
+                    PodStatus::NotFound => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                    }
+                    PodStatus::Running | PodStatus::Pending => {
+                        // Pod shouldn't be running while idle, transition to stopping
+                        self.set_phase(client, Phase::Stopping).await?;
+                    }
+                    PodStatus::Succeeded => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                    }
+                    PodStatus::Failed { message, .. } => {
+                        let error =
+                            Error::generic(message.unwrap_or("Pod failed while idle".to_string()));
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                    PodStatus::Unknown => {
+                        let error = Error::generic("Pod status is unknown while idle");
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Degraded).await?;
+                    }
+                }
+            }
+            Phase::Degraded => {
+                match pod_status {
+                    PodStatus::Running => {
+                        // Pod recovered, transition back to ready
+                        let reason = PodScheduledState::Running;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Ready).await?;
+                    }
+                    PodStatus::NotFound => {
+                        // Pod was cleaned up, transition to idle
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Idle).await?;
+                        self.clear_connected_clients(client).await?;
+                    }
+                    PodStatus::Pending => {
+                        // Pod is being recreated, transition to starting
+                        let reason = PodScheduledState::Scheduled;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Starting).await?;
+                    }
+                    PodStatus::Failed { message, .. } => {
+                        let error =
+                            Error::generic(message.unwrap_or("Pod remains failed".to_string()));
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        // Stay in degraded state
+                    }
+                    PodStatus::Succeeded => {
+                        let reason = PodScheduledState::Succeeded;
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        self.set_phase(client, Phase::Idle).await?;
+                    }
+                    PodStatus::Unknown => {
+                        let error = Error::generic("Pod status remains unknown");
+                        let reason = PodScheduledState::Failed(error);
+                        let condition = Condition::PodScheduled(reason);
+                        self.push_condition(client, condition).await?;
+                        // Stay in degraded state
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Start or stop the server based on its current status and conditions.
+    pub async fn reconcile_server(&self, client: &Client) -> Result<()> {
+        if self.should_server_be_up(client).await? {
+            self.ensure_pod_is_scheduled(client).await?;
+        } else if self.should_server_be_down(client).await? {
+            self.ensure_pod_is_terminated(client).await?;
+        }
+
+        // --- Reconcile the server status with the pod status.
+        self.reconcile_status_with_pod(client).await?;
+
+        Ok(())
+    }
 
     /***********************************************************************/
     /* Actions                                                             */
@@ -467,12 +608,8 @@ impl MCPServer {
         match self.get_status(client).await?.phase {
             Phase::Ready | Phase::Requested | Phase::Starting => Ok(()),
             Phase::Idle | Phase::Degraded | Phase::Stopping => {
-                let reason = RequestReason::Connection;
-                let condition = Condition::Requested(reason);
-                self.clear_conditions(client).await?;
-                self.push_condition(client, condition).await?;
-                self.notify_requested(client).await?;
                 self.set_phase(client, Phase::Requested).await?;
+                self.notify_requested(client).await?;
                 Ok(())
             }
         }
@@ -483,30 +620,14 @@ impl MCPServer {
         match self.get_status(client).await?.phase {
             Phase::Idle | Phase::Stopping => Ok(()),
             Phase::Ready | Phase::Starting | Phase::Degraded => {
-                let reason = StaleReason::ManualShutdown;
-                let condition = Condition::Stale(reason);
-                self.push_condition(client, condition).await?;
                 self.set_phase(client, Phase::Stopping).await?;
                 Ok(())
             }
             Phase::Requested => {
-                self.clear_conditions(client).await?;
                 self.set_phase(client, Phase::Idle).await?;
                 Ok(())
             }
         }
-    }
-
-    /// Start the server `Pod` and `Service`.
-    pub async fn up(&self, client: &Client) -> Result<()> {
-        self.ensure_pod_is_scheduled(client).await?;
-        Ok(())
-    }
-
-    /// Shutdown the server `Pod` and `Service`.
-    pub async fn down(&self, client: &Client) -> Result<()> {
-        self.ensure_pod_is_terminated(client).await?;
-        Ok(())
     }
 
     /// Return a log stream for the server pod.

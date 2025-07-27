@@ -43,7 +43,11 @@ impl Controller {
             move |event| async move {
                 match event {
                     Event::Cleanup(server) => {
-                        server.down(&client).await.map_err(ReconcileReportError)?;
+                        server
+                            .ensure_pod_is_terminated(&client)
+                            .await
+                            .map_err(ReconcileReportError)?;
+                        // server.ensure_service_is_destroted(&client).await.map_err(ReconcileReportError)?;
                         Ok(Action::requeue(Duration::from_secs(5)))
                     }
                     Event::Apply(server) => async {
